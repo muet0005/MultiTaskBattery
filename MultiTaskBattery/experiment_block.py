@@ -6,7 +6,6 @@ import pandas as pd
 import sys
 import numpy as np
 from datetime import datetime
-
 from psychopy import visual, gui, event
 import MultiTaskBattery.utils as ut
 import MultiTaskBattery.task_blocks as tasks
@@ -50,6 +49,7 @@ class Experiment:
         # connect to the eyetracker already
         if self.const.eye_tracker:
             import pylink as pl
+            self.pl = pl  # keep a handle so run() can call pylink (optional import, only when eye_tracker=True)
             # create an Eyelink class
             ## the default ip address is 100.1.1.1.
             ## in the ethernet settings of the laptop,
@@ -160,13 +160,15 @@ class Experiment:
 
         # 2. Initialize the all tasks that we need
         self.task_obj_list = [] # a list containing task objects in the run
+        task_table = ut.get_task_table(self.const.exp_dir) # Get the task table for the experiment, which is a combination of the general task table and the experiment-specific task table (if it exists)
         for t_num, task_info in self.run_info.iterrows():
             # create a task object for the current task, reads the trial file, and append it to the list
-            t = ut.task_table[ut.task_table['name']== task_info.task_name]
+            t = task_table[task_table['name']== task_info.task_name]
             task_info['code'] = t.code
             task_info['descriptive_name'] = t.descriptive_name.iloc[0].capitalize()
             class_name = t.task_class.iloc[0]
-            TaskClass = getattr(tasks, class_name)
+            # Get the task class from the task modules
+            TaskClass = ut.get_task_class(self.const,class_name)
             Task_obj  = TaskClass(task_info,
                                  screen = self.screen,
                                  ttl_clock = self.ttl_clock,
@@ -249,13 +251,14 @@ class Experiment:
 
             ## sending a message to the edf file specifying task name
             if self.const.eye_tracker:
-                pl.sendMessageToFile(f"task_name: {task.name} start_track: {pl.currentUsec()} real start time {r_data.real_start_time} TR count {self.ttl_clock.ttl_count}")
+                self.pl.sendMessageToFile(f"task_name: {task.name} start_track: {self.pl.currentUsec()} real start time {r_data.real_start_time} TR count {self.ttl_clock.ttl_count}")
 
             # display the instruction text for the task. (instructions are task specific)
-            task.display_instructions()
-
-            # wait for a time period equal to instruction duration
-            self.ttl_clock.wait_until(r_data.start_time + r_data.instruction_dur)
+            if r_data.instruction_dur > 0:
+                task.display_instructions()
+                
+                # wait for a time period equal to instruction duration
+                self.ttl_clock.wait_until(r_data.start_time + r_data.instruction_dur)
 
             # Run the task (which saves its data to the target)
             task.start_time = self.ttl_clock.get_time()
@@ -266,11 +269,13 @@ class Experiment:
             if getattr(self.const, 'record_run_end_timestamp', False) and t_num == len(self.task_obj_list) - 1:
                 run_end_timestamp = datetime.now().isoformat()
             run_data.append(r_data)
-            self.screen.fixation_cross()
+            #self.screen.fixation_cross()
 
             # If last task, wait until the endtime for the last task, which for imaging could be longer than the task duration
             # Note that endtime is not used for any task but the last one 
             if t_num == len(self.task_obj_list)-1:
+                self.ttl_clock.wait_until(self.ttl_clock.get_time() + 1.5)
+                self.screen.fixation_cross()
                 self.ttl_clock.wait_until(r_data.end_time)
 
         # Stop the eyetracker
@@ -384,11 +389,10 @@ class Experiment:
 
     def stop_eyetracker(self):
         """
-        stop recording
-        close edf file
-        receive edf file?
-            - receiving the edf file takes time and might be problematic during scanning
-            maybe it would be better to take the edf files from eyelink host computer afterwards
+        Stop recording and close the EDF file.
+
+        - Receiving the EDF file takes time and might be problematic during scanning.
+        - It may be better to copy the EDF files from the EyeLink host computer afterwards.
         """
         self.tk.stopRecording()
         self.tk.closeDataFile()

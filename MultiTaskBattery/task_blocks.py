@@ -20,7 +20,6 @@ import math
 import json
 
 
-
 class Task:
     """
     Task: takes in inputs from run_experiment.py and methods
@@ -32,45 +31,6 @@ class Task:
     Each of other classes runs a unique task given input from target files and from the Task class
     (VisualSearch, SemanticPrediction, NBack, SocialPrediction, ActionObservation).
     """
-
-    def __init__OLD(self, info, screen, ttl_clock, const, subj_id):
-
-        # Pointers to Screen and experimental constants
-        self.screen             = screen
-        self.window             = screen.window # Shortcut to window
-        self.const              = const
-        self.ttl_clock          = ttl_clock  # This is a reference to the clock of the run
-        self.name               = info['task_name']
-        self.descriptive_name   = info['descriptive_name']
-        self.code               = info['task_code']
-        self.task_file          = info['task_file']
-        self.feedback_type      = 'none'
-
-        # Set the instruction text height to a value defined in the constants, or use default - useful for smaller screens
-        self.const.instruction_text_height = getattr(self.const, 'instruction_text_height', None) or 1
-        # RLM
-        self.language = getattr(info, 'language', 'en')
-        # 2. Extract localized instructions from task_details.json dynamically
-        self.instruction_text = ""
-        try:
-            #RLM Edited
-            json_path = Path(self.const.exp_dir) / 'task_details.json'
-            if not json_path.exists():
-                json_path = Path(__file__).parent / 'task_details.json'
-            if json_path.exists():
-                with open(json_path, 'r', encoding='utf-8') as f:
-                    details = json.load(f)
-                
-                # Check if the active task key exists inside the configuration file
-                if self.name in details and 'instructions' in details[self.name]:
-                    # Grab chosen language string, fallback to english if translation missing
-                    self.instruction_text = details[self.name]['instructions'].get(self.language, "")
-                else:
-                    print(f"Warning: Found task_details.json but key '{self.name}' or its 'instructions' block is missing.")   
-            else:
-                print(f"Warning: Could not find task_details.json at {json_path}")
-        except Exception as e:
-            print(f"Warning: Failed to load localization parameters for task '{self.name}': {e}")
 
     def __init__(self, info, screen, ttl_clock, const, subj_id):
 
@@ -154,49 +114,45 @@ class Task:
             import traceback
             traceback.print_exc()
 
+        # MEG / photodiode timing (opt-in via `photodiode = True` in constants.py).
+        # When enabled, the first flip of each trial (the stimulus onset) flashes
+        # the photodiode square and its true onset time is logged to `flip_time`.
+        self.photodiode      = getattr(self.const, 'photodiode', False)
+        self.mark_next_flip = False
+        self.last_flip_time = None
+
+    def flip(self, marker=None):
+        """Flip the window, marking the stimulus onset for MEG / photodiode timing.
+
+        Drop-in replacement for ``self.flip()`` used throughout the tasks.
+        Behaviour depends on ``marker``:
+
+        * ``None`` (default): auto-mark the *first* flip of each trial as the
+          stimulus onset. This is what a plain ``self.flip()`` call does.
+        * ``True`` : force this flip to be the onset marker.
+        * ``False``: force a plain flip (use this on a pre-stimulus fixation flip
+          so the marker lands on the real stimulus instead).
+
+        Marking only does anything when ``photodiode = True`` is set in the
+        experiment's constants.py; otherwise this is exactly ``window.flip()``.
+        When it marks, it flashes the photodiode square and stores the true onset
+        time in ``self.last_flip_time`` (logged to the ``flip_time`` column by
+        ``run()``).
+        """
+        if marker is None:
+            marker = self.mark_next_flip
+        if marker:
+            self.last_flip_time = self.screen.flip(marker=True, clock=self.ttl_clock.clock)
+            self.mark_next_flip = False
+            return self.last_flip_time
+        return self.screen.flip()
+
     def init_task(self):
         """
         Initialize task - default is to read the target information into the trial_info dataframe
         """
         self.trial_info = pd.read_csv(self.const.task_dir / self.name / self.task_file, sep='\t')
 
-    # RLM Edited
-    def display_instructionsOLD(self):
-        """
-        displays the instruction for the task
-        Most tasks have the same instructions. (Tasks that have True/False responses)
-        Those tasks that have different instructions will have their own routine
-        """
-        true_str = f"if True press {self.const.response_keys[1]}"
-        false_str = f"if False press {self.const.response_keys[2]}"
-
-        self.instruction_text = f"{self.descriptive_name} Task\n\n {true_str} \n {false_str}"
-
-        # 3.2 display the instruction text
-        instr_visual = visual.TextStim(self.window, text=self.instruction_text, height=self.const.instruction_text_height, color=[-1, -1, -1])
-        # instr.size = 0.8
-        instr_visual.draw()
-        self.window.flip()
-    
-        """ Displays localized JSON text, falling back to basic True/False keys """
-        if not self.instruction_text:
-            # Fallback only if JSON lookup failed or was missing
-            true_str = f"if True press {self.const.response_keys[1]}"
-            false_str = f"if False press {self.const.response_keys[2]}"
-            text_to_display = f"{self.descriptive_name} Task\n\n {true_str} \n {false_str}"
-        else:
-            text_to_display = self.instruction_text
-
-        instr_visual = visual.TextStim(
-            self.window, 
-            text=text_to_display, 
-            height=self.const.instruction_text_height, 
-            color=[-1, -1, -1],
-            wrapWidth=25
-        )
-        instr_visual.draw()
-        self.window.flip()
-        
     def display_instructions(self):
         """
         Displays the task instructions on the screen.
@@ -214,14 +170,15 @@ class Task:
             pos=(0, 0)
         )
         instr_visual.draw()
-        self.window.flip()
+        self.flip()
 
     def run(self):
-        """Loop over trials and collects data
+        """Loop over trials in the task object and collects data
         Data will be stored in self.trial_data
 
         Returns:
-            info (pd.DataFrame): _description_
+            acc (float): Mean accuracy in proportion correct 
+            rt (float): Mean reaction time in s
         """
         self.trial_data = [] # an empty list which will be appended with the responses from each trial
 
@@ -229,8 +186,15 @@ class Task:
             t_data = trial.copy()
             # Wait for the the start of next trial
             t_data['real_start_time'],t_data['start_ttl'],t_data['start_ttl_time'] = self.ttl_clock.wait_until(self.start_time + trial.start_time )
+            # Arm the photodiode / MEG onset marker for the first flip of this trial
+            if self.photodiode:
+                self.mark_next_flip = True
+                self.last_flip_time = None
             # Run the trial
             t_data = self.run_trial(t_data)
+            # Log the true stimulus-onset (screen-flip) time for MEG alignment
+            if self.photodiode:
+                t_data['flip_time'] = self.last_flip_time
             # Append the trial data
             self.trial_data.append(t_data)
         self.trial_data = pd.DataFrame(self.trial_data)
@@ -246,28 +210,30 @@ class Task:
 
     def show_progress(self, seconds_left, show_last_seconds=5, height=1, width=10, x_pos=-5, y_pos=8):
         """ Displays a progress bar for the Picture Sequence task
+
         Args:
-        seconds_left (float): 
-            The number of seconds remaining in the current trial. 
-            If this value is greater than `show_last_seconds`, the progress bar is not shown.
+            seconds_left (float): 
+                The number of seconds remaining in the current trial. 
+                If this value is greater than `show_last_seconds`, the progress bar is not shown.
+>>>>>>> origin/main
 
-        show_last_seconds (float, optional): 
-            The duration (in seconds) over which to display the progress bar at the end of a trial. 
-            Default is 5 seconds. When `seconds_left` is less than this value, the progress bar appears.
+            show_last_seconds (float, optional): 
+                The duration (in seconds) over which to display the progress bar at the end of a trial. 
+                Default is 5 seconds. When `seconds_left` is less than this value, the progress bar appears.
 
-        height (float, optional): 
-            The vertical size of the progress bar in PsychoPy window units. Default is 1.
+            height (float, optional): 
+                The vertical size of the progress bar in PsychoPy window units. Default is 1.
 
-        width (float, optional): 
-            The horizontal size of the progress bar in PsychoPy window units. Default is 10.
+            width (float, optional): 
+                The horizontal size of the progress bar in PsychoPy window units. Default is 10.
 
-        x_pos (float, optional): 
-            The horizontal position of the center of the progress bar in window coordinates. 
-            Negative values move it leftward. Default is -5.
+            x_pos (float, optional): 
+                The horizontal position of the center of the progress bar in window coordinates. 
+                Negative values move it leftward. Default is -5.
 
-        y_pos (float, optional): 
-            The vertical position of the center of the progress bar in window coordinates. 
-            Positive values move it upward. Default is 8.
+            y_pos (float, optional): 
+                The vertical position of the center of the progress bar in window coordinates. 
+                Positive values move it upward. Default is 8.
         """
         # If we are in the last five seconds of the trial, display the remaining time
         if seconds_left < show_last_seconds:
@@ -286,6 +252,7 @@ class Task:
     def wait_response(self, start_time, max_wait_time, show_last_seconds=None, current_stimuli=None):
         """
         waits for a response to be made and then returns the response
+
         Args:
             start_time (float): the time the RT-period started
             max_wait_time (float): How long to wait maximally
@@ -293,7 +260,7 @@ class Task:
                 during the final *show_last_seconds* of the response window.
                 Requires *current_stimuli* to be set so the display can be
                 redrawn each frame.
-            current_stimuli: A single PsychoPy stimulus or a list of stimuli
+            current_stimuli (optional): A single PsychoPy stimulus or a list of stimuli
                 to redraw each frame when the progress bar is active.
         Returns:
             key (str): the key that was pressed (1-4) (0 if no key was pressed)
@@ -315,7 +282,7 @@ class Task:
                 self.show_progress(seconds_left,
                                 show_last_seconds=show_last_seconds,
                                 y_pos=6)
-                self.window.flip()
+                self.flip()
             keys=event.getKeys(keyList= self.const.response_keys, timeStamped=self.ttl_clock.clock)
             if len(keys)>0:
                 response_made = True
@@ -326,7 +293,7 @@ class Task:
 
     def display_trial_feedback(self, give_feedback,correct_response):
         """
-        display the feedback for the current trial using the color of the fixation cross
+        display the feedback for the current trial at the position of  fixation cross. Correct is a green check mark, incorrect a red cross. 
 
         Args:
             give_feedback (bool):
@@ -362,7 +329,14 @@ class Task:
                 core.quit()
 
     def get_audio_from_movie(self, movie_path, sample_rate=48000):
-        """Seperates the audio from the movie file and returns the audio object (for better memory handling when playing movies with sound)"""
+        """Seperates the audio from the movie file and returns the audio object (for better memory handling when playing movies with sound)
+        
+        Args:
+            movie_path (str): Path and filename of the Movie file
+            sample_rate (int): Sampling rate of movie file, defaults to 48000.
+        Returns: 
+            audio (sound.sound): Sound object 
+        """
 
         # Gets the movie audio
         audio_clip = AudioFileClip(movie_path)
@@ -387,25 +361,26 @@ class NBack(Task):
         self.stim = []
         picture_scale = self.trial_info['picture_scale'].iloc[0] if 'picture_scale' in self.trial_info.columns else 1.0
         for stim in self.trial_info['stim']:
-            stim_path = self.const.stim_dir / self.name / stim
+            stim_path = ut.find_stim(self.const, self.name, stim)
             img = visual.ImageStim(self.window, str(stim_path))
             img.size = img.size * picture_scale
             self.stim.append(img)
         self.corr_key = [self.trial_info['key_nomatch'].iloc[0], self.trial_info['key_match'].iloc[0]]
+        self.n_back = self.infer_n_back()
 
-    def display_instructionsOLD(self):
-        """
-        displays the instruction for the task
-        """
-        str1 = f"Compare image to the one shown 2 previously"
-        str2 = f"if match, press {self.corr_key[1]}"
-        str3 = f"if no match, press {self.corr_key[0]}"
-        self.instruction_text = f"{self.descriptive_name} Task\n\n {str1} \n {str2} \n {str3}"
-        instr_visual = visual.TextStim(self.window, text=self.instruction_text, height=self.const.instruction_text_height, color=[-1, -1, -1])
-        instr_visual.draw()
-        self.window.flip()
+    def infer_n_back(self):
+        """ Derive the numeric n-back level (used only for the instruction text).
 
-    # RLM edited 
+        The level lives in the 'condition' column as an 'N-back' label (e.g.
+        '2-back'), so a hand-made task file only needs that one column. Defaults
+        to 2 if no usable 'condition' label is present.
+        """
+        if 'condition' in self.trial_info.columns:
+            head = str(self.trial_info['condition'].iloc[0]).split('-')[0].strip()
+            if head.isdigit():
+                return int(head)
+        return 2
+
     def display_instructions(self):
         """ Displays localized instruction text with dynamic response key mapping """
         
@@ -435,7 +410,7 @@ class NBack(Task):
             wrapWidth=25
         )
         instr_visual.draw()
-        self.window.flip()
+        self.flip()
 
     def run_trial(self,trial):
         """Runs a single trial of the nback task (after it started)
@@ -453,7 +428,7 @@ class NBack(Task):
 
         # display stimulus
         self.stim[trial['trial_num']].draw()
-        self.window.flip()
+        self.flip()
 
         # collect responses 0: no response 1-4: key pressed
         trial['response'],trial['rt'] = self.wait_response(self.ttl_clock.get_time(), trial['trial_dur'])
@@ -467,21 +442,13 @@ class Rest(Task):
     def __init__(self, info, screen, ttl_clock, const, subj_id):
         super().__init__(info, screen, ttl_clock, const, subj_id)
         self.name          = 'rest'
-
-    # RLM EDITED
-    def display_instructionsOLD(self): # overriding the display instruction routine from the parent
-        self.instruction_text = 'BLAH!!  Rest: Fixate on the cross'
-        instr_visual = visual.TextStim(self.window, text=self.instruction_text, height=self.const.instruction_text_height, color=[-1, -1, -1])
-        # instr.size = 0.8
-        instr_visual.draw()
-        self.window.flip()
-    
+  
     def display_instructions(self):
         """ Display localized fixation rest instructions """
         text_to_display = self.instruction_text if self.instruction_text else "Rest"
         instr_visual = visual.TextStim(self.window, text=text_to_display, height=self.const.instruction_text_height, color=[-1, -1, -1], wrapWidth=25)
         instr_visual.draw()
-        self.window.flip()
+        self.flip()
 
     def show_stim(self):
         # show fixation cross
@@ -504,44 +471,60 @@ class VerbGeneration(Task):
         trial_info_file = self.const.task_dir / self.name / self.task_file
         self.trial_info = pd.read_csv(trial_info_file, sep='\t')
         self.trial_info['noun'] = self.trial_info['stim'].str.strip()
-        self.trial_counter = 0
 
-    def display_instructions(self): # overriding the display instruction from the parent class
+    cue_labels = {'read': 'READ', 'generate': 'GENERATE'}
+    cue_colors = {'read': 'red',  'generate': 'green'}
 
-        self.instruction_text = f"{self.descriptive_name} Task \n\n Silently read the words presented.  \n\n When GENERATE is shown, silently think of verbs that go with the words."
-        instr_visual = visual.TextStim(self.window, text=self.instruction_text, height=self.const.instruction_text_height, color=[-1, -1, -1])
-        instr_visual.draw()
-        self.window.flip()
+    def cue(self, condition):
+        """ Build the coloured condition label drawn just above the stimulus word. """
+        return visual.TextStim(self.window,
+                               text=self.cue_labels.get(condition, condition.upper()),
+                               pos=(0.0, 2.5), color=self.cue_colors.get(condition, 'black'),
+                               units='deg', height=1, bold=True)
 
-    def show_stim(self, noun):
-        """ Display a word for a fixed time. """
+    def display_instructions(self):
+        stims = []
+        stims.append(visual.TextStim(self.window, text=f"{self.descriptive_name} Task",
+                                     pos=(0.0, 6.0), height=self.const.instruction_text_height,
+                                     color=[-1, -1, -1], bold=True))
+        stims.append(visual.TextStim(self.window,
+                                     text="A label at the top of the screen tells you what to do for each word:",
+                                     pos=(0.0, 3.0), height=self.const.instruction_text_height,
+                                     color=[-1, -1, -1], wrapWidth=28))
+        # Two aligned rows: coloured label (right-anchored) + its description
+        rows = [('read', "silently read the word", 0.0),
+                ('generate', "silently think of a verb that goes with it", -2.5)]
+        for cond, desc, y in rows:
+            stims.append(visual.TextStim(self.window, text=self.cue_labels[cond], pos=(-1.0, y),
+                                         color=self.cue_colors[cond], units='deg', height=1,
+                                         bold=True, anchorHoriz='right'))
+            stims.append(visual.TextStim(self.window, text=desc, pos=(0.0, y),
+                                         color=[-1, -1, -1], units='deg',
+                                         height=self.const.instruction_text_height,
+                                         anchorHoriz='left'))
+        for stim in stims:
+            stim.draw()
+        self.flip()
+
+    def show_stim(self, noun, condition):
+        """ Display the condition cue (top) and the word for a fixed time. """
         stim = visual.TextStim(self.window, text=noun, pos=(0.0, 0.0), color=(-1, -1, -1), units='deg', height=2)
+        self.cue(condition).draw()
         stim.draw()
-        self.window.flip()
-
-    def display_generate_instruction(self):
-        """ Display the 'GENERATE' instruction. """
-        generate_instr = visual.TextStim(self.window, text='GENERATE', pos=(0.0, 0.0), color=(-1, -1, -1), units='deg', height=2)
-        generate_instr.draw()
-        self.window.flip()
+        self.flip()
 
     def run_trial(self, trial):
         """ Run a single trial of the VerbGeneration task. """
 
-        # Display word
-        self.show_stim(trial['noun'])
-
-        # display GENERATE instruction at the halfway point
-        if self.trial_counter == len(self.trial_info) // 2:
-            self.display_generate_instruction()
-
-        self.trial_counter += 1
+        self.show_stim(trial['noun'], trial['condition'])
 
         # wait for trial duration
         self.ttl_clock.wait_until(self.ttl_clock.get_time() + trial['trial_dur'])
 
-        # display trial feedback
-        self.display_trial_feedback(give_feedback= trial['display_trial_feedback'], correct_response = None)
+        # ITI: blank the word but keep the cue on, so the context never disappears
+        self.cue(trial['condition']).draw()
+        self.screen.fixation_cross(flip=False)
+        self.flip()
         return trial
 
 class TongueMovement(Task):
@@ -555,7 +538,7 @@ class TongueMovement(Task):
         self.instruction_text = f"{self.descriptive_name} Task \n\n Move your tongue left to right touching your upper premolar teeth"
         instr_visual = visual.TextStim(self.window, text=self.instruction_text, height=self.const.instruction_text_height, color=[-1, -1, -1])
         instr_visual.draw()
-        self.window.flip()
+        self.flip()
 
     def run_trial(self, trial):
         """ Run a single trial of the tonguemovement task. """
@@ -569,66 +552,101 @@ class TongueMovement(Task):
             circle_visual = visual.Circle(self.window, radius=3, edges= 100, lineWidth = 20, fillColor=None, lineColor='black')
             circle_visual.draw()
 
-        self.window.flip()
+        self.flip()
 
         # wait for trial duration
         self.ttl_clock.wait_until(self.ttl_clock.get_time() + trial['trial_dur'])
 
-        # display trial feedback
-        self.display_trial_feedback(give_feedback= trial['display_trial_feedback'], correct_response = None)
+        # return to a plain fixation cross (no response, so no feedback)
+        self.screen.fixation_cross()
 
+        return trial
+
+class MotorLocalizer(Task):
+    """
+    General motor localizer. Each row shows a condition label (e.g. 'hand',
+    'foot', 'tongue') at the top of the screen in black, plus a central
+    fixation cross. A circle appears around the fixation when trial_type == 1
+    and is absent when trial_type == 0. The participant performs the movement
+    associated with the current condition.
+
+    The condition -> movement mapping (e.g. tongue = left-right, foot =
+    flex/extend) and the meaning of the circle appearing/disappearing are
+    explained to the participant during training and are deliberately NOT
+    encoded here: the code only reads the condition and trial_type and renders
+    them. No response is collected, so there is no feedback. Because the
+    condition can change within a block, a single block can localize several
+    body parts (e.g. tongue, hand and foot).
+    """
+    def __init__(self, info, screen, ttl_clock, const, subj_id):
+        super().__init__(info, screen, ttl_clock, const, subj_id)
+        self.feedback_type = 'None'
+
+    def init_task(self):
+        self.trial_info = pd.read_csv(self.const.task_dir / self.name / self.task_file, sep='\t')
+
+    def display_instructions(self):
+        self.instruction_text = f"{self.descriptive_name} Task \n\n Move the indicated body part as instructed"
+        instr_visual = visual.TextStim(self.window, text=self.instruction_text,
+                                       height=self.const.instruction_text_height, color=[-1, -1, -1])
+        instr_visual.draw()
+        self.flip()
+
+    def run_trial(self, trial):
+        """ Run a single row of the motor-localizer task. """
+        # Condition label (body part) at the top of the screen, in black
+        cond_visual = visual.TextStim(self.window, text=str(trial['condition']), pos=(0.0, 6.0),
+                                      color=(-1, -1, -1), units='deg', height=1.5)
+        cond_visual.draw()
+
+        # Central fixation cross (drawn without flipping yet)
+        self.screen.fixation_cross(flip=False)
+
+        # Circle around the fixation only when trial_type == 1
+        if int(trial['trial_type']) == 1:
+            circle_visual = visual.Circle(self.window, radius=3, edges=100, lineWidth=20,
+                                          fillColor=None, lineColor='black')
+            circle_visual.draw()
+
+        self.flip()
+
+        # hold this row for its duration (no response, so no feedback)
+        self.ttl_clock.wait_until(self.ttl_clock.get_time() + trial['trial_dur'])
         return trial
 
 class AuditoryNarrative(Task):
     def __init__(self, info, screen, ttl_clock, const, subj_id):
         super().__init__(info, screen, ttl_clock, const, subj_id)
-
-    # RLM EDITED
-    def display_instructionsOLD(self):
-        self.instruction_text = f'{self.descriptive_name} BLAH Task\n\nListen to the narrative attentively.'
-        instr_visual = visual.TextStim(self.window, text=self.instruction_text, height=self.const.instruction_text_height, color=[-1, -1, -1])
-        instr_visual.draw()
-        self.window.flip()
-    
+   
     def display_instructions(self):
         """ Display localized instructions for the auditory storytelling block """
         text_to_display = self.instruction_text if self.instruction_text else f"{self.descriptive_name} Task"
         instr_visual = visual.TextStim(self.window, text=text_to_display, height=self.const.instruction_text_height, color=[-1, -1, -1], wrapWidth=25)
         instr_visual.draw()
-        self.window.flip()
+        self.flip()
 
     def run_trial(self, trial):
         """ Run a single trial of the AuditoryNarrative task. """
         self.screen.fixation_cross()
 
         # Load and play audio stimulus for the current trial
-        audio_path = self.const.stim_dir / self.name / trial['stim']
-        # RLM ADATPED
-        # audio_stim = sound.Sound(str(audio_path))
-        # audio_stim.play()
-
-        # trial_dur = audio_stim.getDuration()
-
-	# --- BYPASS PSYCHOPY AUDIO COMPONENT ---
-        import sounddevice as sd
-        import soundfile as sf
+        audio_path = ut.find_stim(self.const, self.name, trial['stim'])
+        audio_stim = sound.Sound(str(audio_path))
+        audio_stim.play()
+        # ----------------------------------------
+	    #if on apple silicone, this works --- BYPASS PSYCHOPY AUDIO COMPONENT ---
+        #import sounddevice as sd
+        #import soundfile as sf
         
         # Read the raw sound array and hardware sample rate directly
-        data, fs = sf.read(str(audio_path))
+        #data, fs = sf.read(str(audio_path))
         
         # Fire it straight to Core Audio
-        sd.play(data, fs)
-        
-        # Calculate duration dynamically from the file matrix
-        trial_dur = len(data) / fs
+        #sd.play(data, fs)
         # ----------------------------------------
 
-
-        # wait for trial duration
+        # wait for trial duration (fixation cross stays on screen during playback)
         self.ttl_clock.wait_until(self.ttl_clock.get_time() + trial['trial_dur'])
-
-        # display trial feedback
-        self.display_trial_feedback(give_feedback= trial['display_trial_feedback'], correct_response = None)
 
         return trial
 
@@ -638,8 +656,6 @@ class SpatialNavigation(Task):
 
     def init_task(self):
         self.trial_info = pd.read_csv(self.const.task_dir / self.name / self.task_file, sep='\t')
-        self.corr_key = [self.trial_info['key_false'].iloc[0],self.trial_info['key_true'].iloc[0]]
-
 
     def display_instructions(self):
         start_location = self.trial_info.iloc[0]['location_1']
@@ -651,16 +667,14 @@ class SpatialNavigation(Task):
                                     f"Focus on the fixation cross")
         instr_visual = visual.TextStim(self.window, text=self.instruction_text, height=self.const.instruction_text_height, color=[-1, -1, -1],  wrapWidth=20)
         instr_visual.draw()
-        self.window.flip()
+        self.flip()
 
     def run_trial(self,trial):
+        # fixation cross stays on screen while the participant imagines the route (no response)
         self.screen.fixation_cross()
 
         # wait for trial duration
         self.ttl_clock.wait_until(self.ttl_clock.get_time() + trial['trial_dur'])
-
-        # display trial feedback
-        self.display_trial_feedback(give_feedback= trial['display_trial_feedback'], correct_response = None)
 
         return trial
 
@@ -689,7 +703,7 @@ class TheoryOfMind(Task):
         self.instruction_text = f"\n\n {str1} \n\n {str2} \n {str3}"
         instr_visual = visual.TextStim(self.window, text=self.instruction_text, height=self.const.instruction_text_height, color=[-1, -1, -1])
         instr_visual.draw()
-        self.window.flip()
+        self.flip()
 
     def run_trial(self, trial):
         """ Runs a single trial of the Theory of Mind task """
@@ -704,7 +718,7 @@ class TheoryOfMind(Task):
         story_formatted = '.\n'.join(story_clean.split('. '))
         story_stim = visual.TextStim(self.window, text=story_formatted, alignHoriz='center', wrapWidth=wrapWidth, pos=(0.0, 0.0), color=(-1, -1, -1), units='deg', height=height)
         story_stim.draw()
-        self.window.flip()
+        self.flip()
 
         # wait until story duration
         self.ttl_clock.wait_until(self.ttl_clock.get_time() + trial['story_dur'])
@@ -715,7 +729,7 @@ class TheoryOfMind(Task):
         # Display question
         question_stim = visual.TextStim(self.window, text=trial['question'], pos=(0.0, 0.0), color=(-1, -1, -1), units='deg', height=height, wrapWidth=25)
         question_stim.draw()
-        self.window.flip()
+        self.flip()
 
         # collect responses 0: no response 1-4: key pressed
         trial['response'],trial['rt'] = self.wait_response(self.ttl_clock.get_time(), trial['question_dur'])
@@ -726,7 +740,7 @@ class TheoryOfMind(Task):
 
         return trial
 
-class DegradedPassage(Task):
+class PassageListening(Task):
     def __init__(self, info, screen, ttl_clock, const, subj_id):
         super().__init__(info, screen, ttl_clock, const, subj_id)
 
@@ -734,7 +748,7 @@ class DegradedPassage(Task):
         self.instruction_text = f'{self.descriptive_name} Task \n\nListen to the audio attentively.'
         instr_visual = visual.TextStim(self.window, text=self.instruction_text, height=self.const.instruction_text_height, color=[-1, -1, -1])
         instr_visual.draw()
-        self.window.flip()
+        self.flip()
 
     def run_trial(self, trial):
         """ Run a single trial of the task. """
@@ -742,43 +756,12 @@ class DegradedPassage(Task):
         self.screen.fixation_cross()
 
         # Load and play audio stimulus for the current trial
-        audio_path = self.const.stim_dir / self.name / trial['stim']
+        audio_path = ut.find_stim(self.const, self.name, trial['stim'])
         audio_stim = sound.Sound(str(audio_path))
         audio_stim.play()
 
-        # wait for trial duration
+        # wait for trial duration (fixation cross stays on screen during playback)
         self.ttl_clock.wait_until(self.ttl_clock.get_time() + trial['trial_dur'])
-
-        # display trial feedback
-        self.display_trial_feedback(give_feedback= trial['display_trial_feedback'], correct_response = None)
-
-        return trial
-
-class IntactPassage(Task):
-    def __init__(self, info, screen, ttl_clock, const, subj_id):
-        super().__init__(info, screen, ttl_clock, const, subj_id)
-
-    def display_instructions(self):
-        self.instruction_text = f'{self.descriptive_name} Task \n\nListen to the audio attentively.'
-        instr_visual = visual.TextStim(self.window, text=self.instruction_text, height=self.const.instruction_text_height, color=[-1, -1, -1])
-        instr_visual.draw()
-        self.window.flip()
-
-    def run_trial(self, trial):
-        """ Run a single trial of the task. """
-
-        self.screen.fixation_cross()
-
-        # Load and play audio stimulus for the current trial
-        audio_path = self.const.stim_dir / self.name / trial['stim']
-        audio_stim = sound.Sound(str(audio_path))
-        audio_stim.play()
-
-        # wait for trial duration
-        self.ttl_clock.wait_until(self.ttl_clock.get_time() + trial['trial_dur'])
-
-        # display trial feedback
-        self.display_trial_feedback(give_feedback= trial['display_trial_feedback'], correct_response = None)
 
         return trial
 
@@ -786,19 +769,13 @@ class ActionObservation(Task):
     def __init__(self, info, screen, ttl_clock, const, subj_id):
         super().__init__(info, screen, ttl_clock, const, subj_id)
 
-    # RLM EDITED
-    def display_instructionsOLD(self): # overriding the display instruction from the parent class
-        self.instruction_text = f"{self.descriptive_name}  Task \n\n Keep your head still while watching the two clips. \n\n Try and remember the knot shown."
-        instr_visual = visual.TextStim(self.window, text=self.instruction_text, height=self.const.instruction_text_height, color=[-1, -1, -1])
-        instr_visual.draw()
-        self.window.flip()
     
     def display_instructions(self):
         """ Display localized instructions for the knot observing task """
         text_to_display = self.instruction_text if self.instruction_text else f"{self.descriptive_name} BLAH Task"
         instr_visual = visual.TextStim(self.window, text=text_to_display, height=self.const.instruction_text_height, color=[-1, -1, -1], wrapWidth=25)
         instr_visual.draw()
-        self.window.flip()
+        self.flip()
 
     def run_trial(self, trial):
         """ Runs a single trial of the ActionObservation task """
@@ -806,7 +783,7 @@ class ActionObservation(Task):
         movie_file_name = trial['stim']
 
         # Construct the movie file path
-        movie_path = Path(self.const.stim_dir) / self.name / 'clips' / movie_file_name
+        movie_path = ut.find_stim(self.const, self.name, 'clips', movie_file_name)
 
         # Convert Path object to string for compatibility
         movie_path_str = str(movie_path)
@@ -817,13 +794,10 @@ class ActionObservation(Task):
         while movie_clip.isFinished == False:
             movie_clip.play()
             movie_clip.draw()
-            self.window.flip()
+            self.flip()
             self.ttl_clock.update()
 
         self.screen.fixation_cross()
-
-        # Display trial feedback
-        self.display_trial_feedback(give_feedback= trial['display_trial_feedback'], correct_response = None)
 
         # Flush memory: This is necessary for the script to be able to run more than 1 run. Presenting movies is very memory hungry, so do not remove!
         movie_clip.unload()
@@ -844,19 +818,6 @@ class DemandGrid(Task):
         trial_info_file = self.const.task_dir / self.name / self.task_file
         self.trial_info = pd.read_csv(trial_info_file, sep='\t')
         self.corr_key = [self.trial_info['key_left'].iloc[0],self.trial_info['key_right'].iloc[0]]
-
-    # RLM EDITED
-    def display_instructionsOLD(self):
-        """
-        displays the instruction for the task
-        """
-        str1 = f"You will watch the sequence of boxes that light up and then choose the correct pattern"
-        str2 = f"if left, press {self.corr_key[0]}"
-        str3 = f"if right, press {self.corr_key[1]}"
-        self.instruction_text = f"{self.descriptive_name} Task\n\n {str1} \n {str2} \n {str3}"
-        instr_visual = visual.TextStim(self.window, text=self.instruction_text, height=self.const.instruction_text_height, color=[-1, -1, -1])
-        instr_visual.draw()
-        self.window.flip()
     
     def display_instructions(self):
         """ Display localized instructions for spatial demand grid with dynamic key mapping """
@@ -882,7 +843,7 @@ class DemandGrid(Task):
             wrapWidth=25
         )
         instr_visual.draw()
-        self.window.flip()
+        self.flip()
 
     def create_grid(self, sequence=None, position='center',grid_size=(3,4)):
         """Creates the grid of squares for the DemandGrid task, lighting up specific squares blue if a sequence is given,
@@ -935,7 +896,7 @@ class DemandGrid(Task):
 
         step_dur = trial['sequence_dur']/num_steps
         self.grid = self.create_grid(grid_size=grid_size)
-        self.window.flip()
+        self.flip()
 
         # Display the sequence in steps
         if 'original_sequence' in trial:
@@ -955,7 +916,7 @@ class DemandGrid(Task):
                 for row in self.grid:
                     for rect in row:
                         rect.draw()
-                self.window.flip()
+                self.flip()
                 self.ttl_clock.wait_until(self.ttl_clock.get_time() + step_dur)
 
                 for tuple in step_sequence:
@@ -977,7 +938,7 @@ class DemandGrid(Task):
                 for row in self.grid:
                     for rect in row:
                         rect.draw()
-                self.window.flip()
+                self.flip()
                 self.ttl_clock.wait_until(self.ttl_clock.get_time() + step_dur)
 
                 # Reset colors after the pair
@@ -996,7 +957,7 @@ class DemandGrid(Task):
 
         original_grid = self.create_grid(sequence=original_sequence, position=correct_side, grid_size=grid_size)
         modified_grid = self.create_grid(sequence=modified_sequence, position='left' if correct_side == 'right' else 'right', grid_size=grid_size)
-        self.window.flip()
+        self.flip()
 
         # collect responses 0: no response 1-4: key pressed
         trial['response'],trial['rt'] = self.wait_response(self.ttl_clock.get_time(), trial['question_dur'])
@@ -1007,15 +968,15 @@ class DemandGrid(Task):
 
         return trial
 
-class SentenceReading(Task):
+class Reading(Task):
     def __init__(self, info, screen, ttl_clock, const, subj_id):
         super().__init__(info, screen, ttl_clock, const, subj_id)
 
     def display_instructions(self):
-        self.instruction_text = f'{self.descriptive_name} Task \n\n Read each English word and press a button when the image of a hand pressing a button is displayed'
+        self.instruction_text = f'{self.descriptive_name} Task \n\n Read the shown text and press a button when the image of a hand pressing a button is displayed'
         instr_visual = visual.TextStim(self.window, text=self.instruction_text, height=self.const.instruction_text_height, color=[-1, -1, -1])
         instr_visual.draw()
-        self.window.flip()
+        self.flip()
 
     def run_trial(self, trial):
         """ Run a single trial of the sentence reading task. """
@@ -1028,67 +989,23 @@ class SentenceReading(Task):
         for word in words:
             word_stim = visual.TextStim(self.window, text=word, pos=(0.0, 0.0), color=(-1, -1, -1), units='deg', height=2)
             word_stim.draw()
-            self.window.flip()
+            self.flip()
             self.ttl_clock.wait_until(self.ttl_clock.get_time() + 0.45)
 
         event.clearEvents()
 
         # show press button image
-        button_stim = visual.ImageStim(self.window, image=str(self.const.stim_dir / self.name / 'hand_press_transparent.png'))
+        button_stim = visual.ImageStim(self.window, image=str(ut.find_stim(self.const, self.name, 'hand_press_transparent.png')))
         button_stim.draw()
-        self.window.flip()
+        self.flip()
         trial['response'],trial['rt'] = self.wait_response(self.ttl_clock.get_time(), 0.4)
 
         # show blank_transparent image
-        blank_stim = visual.ImageStim(self.window, image=str(self.const.stim_dir / self.name / 'blank_transparent.png'))
+        blank_stim = visual.ImageStim(self.window, image=str(ut.find_stim(self.const, self.name, 'blank_transparent.png')))
         blank_stim.draw()
-        self.window.flip()
+        self.flip()
 
         # flush any keys in buffer
-        event.clearEvents()
-
-        # not displaying crosshair to replicate the localizer
-
-        return trial
-
-class NonwordReading(Task):
-    def __init__(self, info, screen, ttl_clock, const, subj_id):
-        super().__init__(info, screen, ttl_clock, const, subj_id)
-
-    def display_instructions(self):
-        self.instruction_text = f'{self.descriptive_name} Task \n\n Read each nonword word and press a button when the image of a hand pressing a button is displayed'
-        instr_visual = visual.TextStim(self.window, text=self.instruction_text, height=self.const.instruction_text_height, color=[-1, -1, -1])
-        instr_visual.draw()
-        self.window.flip()
-
-    def run_trial(self, trial):
-        """ Run a single trial of the nonword reading task. """
-
-        # get sentence and split into words by space
-        sentence = trial['stim']
-        words = sentence.split()
-
-        #show words seqeuntially each for 450ms
-        for word in words:
-            word_stim = visual.TextStim(self.window, text=word, pos=(0.0, 0.0), color=(-1, -1, -1), units='deg', height=2)
-            word_stim.draw()
-            self.window.flip()
-            self.ttl_clock.wait_until(self.ttl_clock.get_time() + 0.45)
-
-        event.clearEvents()
-
-        # show press button image
-        button_stim = visual.ImageStim(self.window, image=str(self.const.stim_dir / self.name / 'hand_press_transparent.png'))
-        button_stim.draw()
-        self.window.flip()
-        trial['response'],trial['rt'] = self.wait_response(self.ttl_clock.get_time(), 0.4)
-
-        # show blank_transparent image
-        blank_stim = visual.ImageStim(self.window, image=str(self.const.stim_dir / self.name / 'blank_transparent.png'))
-        blank_stim.draw()
-        self.window.flip()
-
-        # clear any keys in buffer
         event.clearEvents()
 
         # not displaying crosshair to replicate the localizer
@@ -1106,17 +1023,17 @@ class OddBall(Task):
         """
         trial_info_file = self.const.task_dir / self.name / self.task_file
         self.trial_info = pd.read_csv(trial_info_file, sep='\t')
-        self.corr_key = [self.trial_info['key_one'].iloc[0],self.trial_info['key_two'].iloc[0]]
+        self.press_key = self.trial_info['key_one'].iloc[0]
 
     def display_instructions(self):
         """
         displays the instruction for the task
         """
-        str1 = f"Press {self.corr_key[0]} when you see a red K"
+        str1 = f"Press {self.press_key} when you see a red K"
         self.instruction_text = f"{self.descriptive_name} Task\n\n {str1} \n"
         instr_visual = visual.TextStim(self.window, text=self.instruction_text, height=self.const.instruction_text_height, color=[-1, -1, -1])
         instr_visual.draw()
-        self.window.flip()
+        self.flip()
 
     def run_trial(self, trial):
         """ Run a single trial of the oddball task. """
@@ -1134,10 +1051,11 @@ class OddBall(Task):
             word_stim = visual.TextStim(self.window, text='O', pos=(0.0, 0.0), color='black', units='deg', height=1.5)
 
         word_stim.draw()
-        self.window.flip()
+        self.flip()
         self.ttl_clock.wait_until(self.ttl_clock.get_time() + trial['trial_dur'])
 
-        self.display_trial_feedback(trial['display_trial_feedback'], None)
+        # blank the letter to a fixation cross during the response window (no per-trial feedback)
+        self.screen.fixation_cross()
 
         # Flush any keys in buffer
         event.clearEvents()
@@ -1168,22 +1086,13 @@ class FingerSequence(Task):
         """
         trial_info_file = self.const.task_dir / self.name / self.task_file
         self.trial_info = pd.read_csv(trial_info_file, sep='\t')
-        self.corr_key = [self.trial_info['key_one'].iloc[0],self.trial_info['key_two'].iloc[0],self.trial_info['key_three'].iloc[0],self.trial_info['key_four'].iloc[0]]
 
-
-    # RLM EDITED
-    def display_instructionsOLD(self):
-        self.instruction_text = f"{self.descriptive_name} Task \n\n Using your four fingers, press the keys in the order shown on the screen\n Use all four fingers for this task"
-        instr_visual = visual.TextStim(self.window, text=self.instruction_text, height=self.const.instruction_text_height, color=[-1, -1, -1])
-        instr_visual.draw()
-        self.window.flip()
-    
     def display_instructions(self):
         """ Display localized instructions for finger sequencing """
         text_to_display = self.instruction_text if self.instruction_text else f"{self.descriptive_name} Task"
         instr_visual = visual.TextStim(self.window, text=text_to_display, height=self.const.instruction_text_height, color=[-1, -1, -1], wrapWidth=25)
         instr_visual.draw()
-        self.window.flip()
+        self.flip()
 
 
     def run_trial(self, trial):
@@ -1205,7 +1114,7 @@ class FingerSequence(Task):
             stim = visual.TextStim(self.window, text=number, pos=pos, color='black', units='deg', height=1.5)
             stim.draw()
 
-        self.window.flip()
+        self.flip()
 
 
         sequence_start_time = self.ttl_clock.get_time() # Needed for knowing when to stop looking for key presses
@@ -1240,7 +1149,7 @@ class FingerSequence(Task):
                 stim = visual.TextStim(self.window, text=number, pos=pos, color=color, units='deg', height=1.5)
                 stim.draw()
 
-            self.window.flip()
+            self.flip()
 
         else:
             # If the sequence is completed, wait until the end of the trial
@@ -1276,33 +1185,16 @@ class FlexionExtension(Task):
         self.instruction_text = f"{self.descriptive_name} Task \n\n Flex and extend your right and left toes"
         instr_visual = visual.TextStim(self.window, text=self.instruction_text, height=self.const.instruction_text_height, color=[-1, -1, -1])
         instr_visual.draw()
-        self.window.flip()
+        self.flip()
 
     def run_trial(self, trial):
-        real_start_time, start_ttl, start_ttl_time = self.ttl_clock.wait_until(trial['start_time'])
-        # Handle the display of each action
-        self.stim_pair = trial['stim'].split()
-        n_rep = int(trial['trial_dur'] / (trial['stim_dur'] * 2))
-        stim_actions = np.tile(self.stim_pair, n_rep)
-
-        for action in stim_actions:
-            # Display action
-            stim = visual.TextStim(self.window, text=action, pos=(0.0, 0.0), color=(-1, -1, -1), units='deg', height=1.5)
-            stim.draw()
-            self.window.flip()
-
-            # Wait for the duration of the stimulus
-            start_time = self.ttl_clock.get_time()
-            self.ttl_clock.wait_until(start_time + trial['stim_dur'])
-
-        trial['real_start_time'] = real_start_time
-        trial['start_ttl'] = start_ttl
-        trial['start_ttl_time'] = start_ttl_time
-
-        # No response is expected in this task, so return trial as is
+        # Show this phase's cue ('flexion' or 'extension') for its duration; no response.
+        stim = visual.TextStim(self.window, text=trial['stim'], pos=(0.0, 0.0),
+                               color=(-1, -1, -1), units='deg', height=1.5)
+        stim.draw()
+        self.flip()
+        self.ttl_clock.wait_until(self.ttl_clock.get_time() + trial['trial_dur'])
         return trial
-
-    #semantic prediction runs (slight bug for response feedback: last word is not synced with last word in task_file..)
 
 class SemanticPrediction(Task):
 
@@ -1331,7 +1223,7 @@ class SemanticPrediction(Task):
         self.instruction_text = f"{self.descriptive_name} Task\n\n {str1} \n {str2} \n {str3}"
         instr_visual = visual.TextStim(self.window, text=self.instruction_text, height=self.const.instruction_text_height, color=[-1, -1, -1])
         instr_visual.draw()
-        self.window.flip()
+        self.flip()
 
     def run_trial(self, trial):
         """ Runs a single trial of the semantic prediction task """
@@ -1348,7 +1240,7 @@ class SemanticPrediction(Task):
         for word in words:
             word_stim = visual.TextStim(self.window, text=word, pos=(0.0, 0.0), color=(-1, -1, -1), units='deg', height=height_word)
             word_stim.draw()
-            self.window.flip()
+            self.flip()
             self.ttl_clock.wait_until(self.ttl_clock.get_time() + 0.8)
 
         event.clearEvents()
@@ -1361,7 +1253,7 @@ class SemanticPrediction(Task):
         # Display last word
         last_word_stim = visual.TextStim(self.window, text=trial['last_word'], pos=(0.0, 0.0), color=(-1, -1, -1), units='deg', height= height_word, wrapWidth=30)
         last_word_stim.draw()
-        self.window.flip()
+        self.flip()
 
         event.clearEvents()
 
@@ -1415,7 +1307,7 @@ class SemanticSwitching(Task):
             color=[-1, -1, -1],
         )
         instr_visual.draw()
-        self.window.flip()
+        self.flip()
 
     def run_trial(self, trial):
         """Runs a single trial of the semantic switching task."""
@@ -1438,7 +1330,7 @@ class SemanticSwitching(Task):
                 height=height_word,
             )
             word_stim.draw()
-            self.window.flip()
+            self.flip()
             self.ttl_clock.wait_until(self.ttl_clock.get_time() + 0.8)
 
         event.clearEvents()
@@ -1459,7 +1351,7 @@ class SemanticSwitching(Task):
             wrapWidth=30,
         )
         last_word_stim.draw()
-        self.window.flip()
+        self.flip()
 
         event.clearEvents()
 
@@ -1477,6 +1369,7 @@ class SemanticSwitching(Task):
         )
 
         return trial
+
     
 class VisualSearch(Task):
 
@@ -1548,7 +1441,7 @@ class VisualSearch(Task):
                 stim_random_idx = random.randint(0, len(stim_images)-1)  #chooses random stimuli from stim_images list
                 stim_current = stim_images[stim_random_idx]
 
-            stim_path = self.const.stim_dir/ self.name / stim_current
+            stim_path = ut.find_stim(self.const, self.name, stim_current)
             stimulus = visual.ImageStim(self.window, str(stim_path), size=(0.8,0.8))
             stimulus.setPos([aperture.pos[0], aperture.pos[1]]) #puts stimuli within apertures
             self.stim.append(stimulus) #creates list of all randomly selected stimuli
@@ -1566,7 +1459,7 @@ class VisualSearch(Task):
         self.instruction_text = f"{self.descriptive_name} Task\n\n {str1} \n {str2} \n {str3}"
         instr_visual = visual.TextStim(self.window, text=self.instruction_text, height=self.const.instruction_text_height, color=[-1, -1, -1])
         instr_visual.draw()
-        self.window.flip()
+        self.flip()
 
     def run_trial(self,trial):
         """Runs a single trial of visual search task
@@ -1575,7 +1468,8 @@ class VisualSearch(Task):
         # Flush any keys in buffer
         event.clearEvents()
 
-        num_stimuli = self.trial_info.loc[trial['trial_num'], 'num_stimuli']  #indicates if trial is easy (4 stimuli) or hard (8 stimuli)
+        # Set size (difficulty) is stored as the condition, e.g. '8-items'.
+        num_stimuli = int(str(trial['condition']).split('-')[0])
 
         self.generate_trial_stimuli(num_stimuli)
 
@@ -1585,7 +1479,7 @@ class VisualSearch(Task):
         for stimulus in self.stim:
             stimulus.draw()
 
-        self.window.flip()
+        self.flip()
 
         # collect responses
         trial['response'],trial['rt'] = self.wait_response(self.ttl_clock.get_time(), trial['trial_dur'])
@@ -1606,7 +1500,6 @@ class RMET(Task):
         """
         trial_info_file = self.const.task_dir / self.name / self.task_file
         self.trial_info = pd.read_csv(trial_info_file, sep='\t')
-        self.corr_key = [self.trial_info['key_one'].iloc[0],self.trial_info['key_two'].iloc[0],self.trial_info['key_three'].iloc[0],self.trial_info['key_four'].iloc[0]]
 
     def display_instructions(self):
         task_name = visual.TextStim(self.window, text=f'{self.descriptive_name.capitalize()}', height=self.const.instruction_text_height, color=[-1, -1, -1], bold=True, pos=(0, 3))
@@ -1621,7 +1514,7 @@ class RMET(Task):
         self.instruction_text += f"\n\n\n{self.trial_info['key_one'].iloc[0]}. index \t{self.trial_info['key_two'].iloc[0]}. middle\t{self.trial_info['key_three'].iloc[0]}. ring\t{self.trial_info['key_four'].iloc[0]}. pinky"
         instr_visual = visual.TextStim(self.window, text=self.instruction_text, height=self.const.instruction_text_height, color=[-1, -1, -1], wrapWidth=20, pos=(0, 0))
         instr_visual.draw()
-        self.window.flip()
+        self.flip()
 
     def run_trial(self, trial):
         """ Runs a single trial of the Reading the Mind in the Eye (RMET) task """
@@ -1633,14 +1526,14 @@ class RMET(Task):
         # Get the file name
         picture_file_name = trial['stim']
         # Construct the picture file path
-        picture_path = Path(self.const.stim_dir) / self.name / 'pictures' / picture_file_name
+        picture_path = ut.find_stim(self.const, self.name, 'pictures', picture_file_name)
         # Convert Pathself object to string for compatibility
         picture_path_str = str(picture_path)
         # Create an ImageStim object, explicitly centered so that the four answer
         # options (placed symmetrically above and below) straddle the image.
         picture = visual.ImageStim(self.window, str(picture_path_str), pos=(0, 0))
         # Make the picture smaller
-        picture_scale = getattr(self.const, 'rmet_picture_scale', None) or 0.7
+        picture_scale = trial['picture_scale'] if 'picture_scale' in trial else 0.7
         picture.size = picture.size * picture_scale
 
 
@@ -1701,7 +1594,7 @@ class RMET(Task):
         picture.draw()
         for answer_stim in answer_stims:
             answer_stim.draw()
-        self.window.flip()
+        self.flip()
 
         # collect responses 0: no response 1-4: key pressed
         show_last_seconds = float(trial.get('show_last_seconds', 0)) or None
@@ -1738,7 +1631,7 @@ class PictureSequence(Task):
         self.instruction_text += f"\n\n\n{self.trial_info['key_one'].iloc[0]}. index \t{self.trial_info['key_two'].iloc[0]}. middle\t{self.trial_info['key_three'].iloc[0]}. ring\t{self.trial_info['key_four'].iloc[0]}. pinky"
         instr_visual = visual.TextStim(self.window, text=self.instruction_text, height=self.const.instruction_text_height, color=[-1, -1, -1], wrapWidth=20, pos=(0, 0))
         instr_visual.draw()
-        self.window.flip()
+        self.flip()
 
     def show_presses(self, pressed_keys, positions, last_key_press_time, width=1.4, height=7, line_width=10):
         """ Displays the presses on the screen
@@ -1825,7 +1718,7 @@ class PictureSequence(Task):
                                x_pos=0-width*0.5,
                                y_pos=y_pos+height*0.5+0.4)
             self.show_presses(pressed_keys, positions, digit_start_time, width, height, line_width)
-            self.window.flip()
+            self.flip()
 
             if num_presses < num_items:
                 keys = event.getKeys(keyList=self.const.response_keys, timeStamped=self.ttl_clock.clock)
@@ -1878,7 +1771,7 @@ class StorySequence(Task):
         self.instruction_text += f"\n\n\n{self.trial_info['key_one'].iloc[0]}. index \t{self.trial_info['key_two'].iloc[0]}. middle\t{self.trial_info['key_three'].iloc[0]}. ring\t{self.trial_info['key_four'].iloc[0]}. pinky"
         instr_visual = visual.TextStim(self.window, text=self.instruction_text, height=self.const.instruction_text_height, color=[-1, -1, -1], wrapWidth=20, pos=(0, 0))
         instr_visual.draw()
-        self.window.flip()
+        self.flip()
 
     def show_presses(self, sentences, positions, pressed_keys, last_key_press_time, wrapWidth, text_height=1):
         """ Displays the presses on the screen
@@ -1947,7 +1840,7 @@ class StorySequence(Task):
             # Display the sentences
             [visual.TextStim(self.window, text=sentence, pos=positions[s], color='black', height=text_height, wrapWidth=wrapWidth).draw() for s, sentence in enumerate(sentences)]
             self.show_presses(sentences, positions, pressed_keys, digit_start_time, wrapWidth, text_height)
-            self.window.flip()
+            self.flip()
 
             if num_presses < num_items:
                 keys = event.getKeys(keyList=self.const.response_keys, timeStamped=self.ttl_clock.clock)
@@ -2005,7 +1898,7 @@ class ActionPrediction(Task):
             self.instruction_text += f"\n\n\nLEFT/HUG: index finger \n\tRIGHT/SHAKE HANDS: middle finger\n"
         instr_visual = visual.TextStim(self.window, text=self.instruction_text, height=self.const.instruction_text_height, color=[-1, -1, -1], wrapWidth=25, pos=(0, 0))
         instr_visual.draw()
-        self.window.flip()
+        self.flip()
 
 
     def run_trial(self, trial):
@@ -2026,13 +1919,13 @@ class ActionPrediction(Task):
 
         movie_clip.play()
 
-        self.window.flip()
+        self.flip()
 
 
         while movie_clip.isFinished == False:
             movie_clip.play()
             movie_clip.draw()
-            self.window.flip()
+            self.flip()
             self.ttl_clock.update()
             # core.wait(1)  # Freeze the video for a moment
 
@@ -2042,7 +1935,7 @@ class ActionPrediction(Task):
         question += f"\n\n\n{self.corr_key[0]}. {options[0]} \t\t\t{self.corr_key[1]}. {options[1]}"
         question_stim = visual.TextStim(self.window, text=question, pos=(0.0, 0.0), color=(-1, -1, -1), units='deg', height= 1.5, wrapWidth=25)
         question_stim.draw()
-        self.window.flip()
+        self.flip()
 
         # collect responses 0: no response 1-4: key pressed
         trial['response'],trial['rt'] = self.wait_response(self.ttl_clock.get_time(), trial['question_dur'])
@@ -2062,26 +1955,16 @@ class Movie(Task):
         super().__init__(info, screen, ttl_clock, const, subj_id)
         self.name = 'movie'
 
-    # RLM EDITED
-    def display_instructionsOLD(self):
-        task_name = visual.TextStim(self.window, text=f'{self.descriptive_name.capitalize()}', height=self.const.instruction_text_height, color=[-1, -1, -1], bold=True, pos=(0, 3))
-        task_name.draw()
-
-        self.instruction_text = f"\n\n You will watch short clips from a movie. Please keep your head still and pay attention to the screen."
-        instr_visual = visual.TextStim(self.window, text=self.instruction_text, height=self.const.instruction_text_height, color=[-1, -1, -1], wrapWidth=20, pos=(0, 0))
-        instr_visual.draw()
-        self.window.flip()
-
     def display_instructions(self):
         """ Display localized instructions for passive movie watching """
         text_to_display = self.instruction_text if self.instruction_text else f"{self.descriptive_name} Task"
         instr_visual = visual.TextStim(self.window, text=text_to_display, height=self.const.instruction_text_height, color=[-1, -1, -1], wrapWidth=25)
         instr_visual.draw()
-        self.window.flip()
+        self.flip()
 
     def run_trial(self, trial):
         window_width, _ = self.window.size
-        movie_scale = getattr(self.const, 'movie_scale', None) or 0.4
+        movie_scale = trial['media_scale'] if 'media_scale' in trial else 0.4
         stim_width = int(window_width * movie_scale) # Make the video fraction of the window width
         stim_height = int(stim_width  * 360 / 640)  # Original size of the video is 640x360
 
@@ -2089,7 +1972,7 @@ class Movie(Task):
         movie_file_name = trial['stim']
 
         # Construct the movie file path
-        movie_path = Path(self.const.stim_dir) / self.name / 'clips' / movie_file_name
+        movie_path = ut.find_stim(self.const, self.name, 'clips', movie_file_name)
 
         # Convert Path object to string for compatibility
         movie_path_str = str(movie_path)
@@ -2099,12 +1982,12 @@ class Movie(Task):
 
 
         movie_clip.play()
-        self.window.flip()
+        self.flip()
 
         while movie_clip.isFinished == False:
             movie_clip.play()
             movie_clip.draw()
-            self.window.flip()
+            self.flip()
             self.ttl_clock.update()
 
         # Flush memory: This is necessary for the script to be able to run more than 1 run. Presenting movies is very memory hungry, so do not remove!
@@ -2136,7 +2019,7 @@ class StrangeStories(Task):
         self.instruction_text += "\n\n Imagine your answer to the question. \nChoose the best match from the answers. \nSome questions have no right answer."
         instr_visual = visual.TextStim(self.window, text=self.instruction_text, height=self.const.instruction_text_height, color=[-1, -1, -1], wrapWidth=20, pos=(0, 0))
         instr_visual.draw()
-        self.window.flip()
+        self.flip()
 
     def run_trial(self, trial):
         window_width, _ = self.window.size
@@ -2169,13 +2052,13 @@ class StrangeStories(Task):
         if play_audio_separatly:
             audio.play()
         movie_clip.play()
-        self.window.flip()
+        self.flip()
 
         # Play through the movie frame by frame
         while movie_clip.isFinished == False:
             movie_clip.play()
             movie_clip.draw()
-            self.window.flip()
+            self.flip()
             self.ttl_clock.update()
 
         if play_audio_separatly:
@@ -2199,7 +2082,7 @@ class StrangeStories(Task):
         # Display question
         stim_question = visual.TextStim(self.window, text = question, pos=(0, 4), color=(-1, -1, -1), units='deg', height= 1.5, wrapWidth=wrapWidth)
         stim_question.draw()
-        self.window.flip()
+        self.flip()
 
         # Display the question until X seconds before trial is over (answer_dur), to make the 'buffer' zone for the trial, i.e. the time of variable length, the time where the participant deliberates about their answer
         self.ttl_clock.wait_until(self.ttl_clock.get_time() + (trial['trial_dur'] - movie_clip.duration - trial['answer_dur']))
@@ -2222,7 +2105,7 @@ class StrangeStories(Task):
         stim_answers = visual.TextStim(self.window, text=answers, pos=(left_position, 0), color=(-1, -1, -1), units='deg', height= 1.5, wrapWidth=wrapWidth, alignHoriz=align)
         stim_question.draw()
         stim_answers.draw()
-        self.window.flip()
+        self.flip()
 
         # collect responses 0: no response 1-4: key pressed
         trial['response'],trial['rt'] = self.wait_response(self.ttl_clock.get_time(), trial['answer_dur'])
@@ -2267,7 +2150,7 @@ class FauxPas(Task):
         self.instruction_text += f"\n\n{self.corr_key[0]}. Yes \t{self.corr_key[1]}. No\n"
         instr_visual = visual.TextStim(self.window, text=self.instruction_text, height=self.const.instruction_text_height, color=[-1, -1, -1], wrapWidth=20, pos=(0, 0))
         instr_visual.draw()
-        self.window.flip()
+        self.flip()
 
     def run_trial(self, trial):
         """ Runs a single trial of the Theory of Mind task """
@@ -2280,7 +2163,7 @@ class FauxPas(Task):
         # story = '.\n'.join(story.split('. '))
         story_stim = visual.TextStim(self.window, text=story, alignHoriz='center', wrapWidth=20, pos=(0.0, 0.0), color=(-1, -1, -1), units='deg', height= height)
         story_stim.draw()
-        self.window.flip()
+        self.flip()
 
         # wait until story duration
         self.ttl_clock.wait_until(self.ttl_clock.get_time() + trial['story_dur'])
@@ -2295,7 +2178,7 @@ class FauxPas(Task):
         question += f"\n\n\n{self.corr_key[0]}. {options[0]} \t\t\t{self.corr_key[1]}. {options[1]}"
         question_stim = visual.TextStim(self.window, text=question, pos=(0.0, 0.0), color=(-1, -1, -1), units='deg', height= height, wrapWidth=25)
         question_stim.draw()
-        self.window.flip()
+        self.flip()
 
         # collect responses 0: no response 1-4: key pressed
         trial['response'],trial['rt'] = self.wait_response(self.ttl_clock.get_time(),
@@ -2331,7 +2214,7 @@ class FrithHappe(Task):
         answer_expalantion = f"\n\n{self.corr_key[0]}. No interaction\n\n{self.corr_key[1]}. Mental (One triangle manipulates the thoughts or feelings of the other)"
         instr_visual = visual.TextStim(self.window, text=answer_expalantion, color=[-1, -1, -1], wrapWidth=20, pos=(-8, -1), alignHoriz='left')
         instr_visual.draw()
-        self.window.flip()
+        self.flip()
 
     def run_trial(self, trial):
         """ Runs a single trial of the Frith-Happe task """
@@ -2355,13 +2238,13 @@ class FrithHappe(Task):
 
 
         movie_clip.play()
-        self.window.flip()
+        self.flip()
 
         # Play through the movie frame by frame
         while movie_clip.isFinished == False:
             movie_clip.play()
             movie_clip.draw()
-            self.window.flip()
+            self.flip()
             self.ttl_clock.update()
 
         # Initialize question
@@ -2369,7 +2252,7 @@ class FrithHappe(Task):
         # Display question
         stim_question = visual.TextStim(self.window, text = question, pos=(0, 2), color=(-1, -1, -1), units='deg', height= 1.5, wrapWidth=wrapWidth)
         stim_question.draw()
-        self.window.flip()
+        self.flip()
 
         # Display the question until X seconds before trial is over (answer_dur), to make the 'buffer' zone for the trial, i.e. the time of variable length, the time where the participant deliberates about their answer
         self.ttl_clock.wait_until(self.ttl_clock.get_time() + (trial['trial_dur'] - movie_clip.duration - trial['question_dur']))
@@ -2383,7 +2266,7 @@ class FrithHappe(Task):
         answers = f"\n\n{self.corr_key[0]}. No interaction \n{self.corr_key[1]}. Mental"
         answers_stim = visual.TextStim(self.window, text=answers, pos=(-5, 0), color=(-1, -1, -1), units='deg', height= 1.5, wrapWidth=wrapWidth, alignHoriz='left')
         answers_stim.draw()
-        self.window.flip()
+        self.flip()
 
         # collect responses 0: no response 1-4: key pressed
         trial['response'],trial['rt'] = self.wait_response(self.ttl_clock.get_time(), trial['question_dur'])
@@ -2448,7 +2331,7 @@ class Liking(Task):
                                    height=self.const.instruction_text_height, color=[-1, -1, -1],
                                    wrapWidth=20, pos=(-3, -3), alignHoriz='left')
         key_text.draw()
-        self.window.flip()
+        self.flip()
 
     def run_trial(self, trial):
         window_width, _ = self.window.size
@@ -2482,12 +2365,12 @@ class Liking(Task):
         if play_audio_separatly:
             audio.play()
         movie_clip.play()
-        self.window.flip()
+        self.flip()
 
         while (self.ttl_clock.get_time() - movie_start_time < max_video_duration):
             movie_clip.play()
             movie_clip.draw()
-            self.window.flip()
+            self.flip()
             self.ttl_clock.update()
 
         # Flush any keys in buffer
@@ -2511,7 +2394,7 @@ class Liking(Task):
         answers = f"\n\n{self.corr_key[0]}. Yes \t{self.corr_key[1]}. No"
         stim_answers = visual.TextStim(self.window, text=answers, pos=(-3, 0), color=(-1, -1, -1), units='deg', height= 1.5, wrapWidth=wrapWidth, alignHoriz='left')
         stim_answers.draw()
-        self.window.flip()
+        self.flip()
 
         # collect responses 0: no response 1-4: key pressed
         trial['response'],trial['rt'] = self.wait_response(self.ttl_clock.get_time(), trial['question_dur'])
@@ -2564,7 +2447,7 @@ class Pong(Task):
         self.instruction_text = f"Use the buttons to move the paddle and catch the ball."
         instr_visual = visual.TextStim(self.window, text=self.instruction_text, color=[-1, -1, -1],pos=(0, 0.3))
         instr_visual.draw()
-        self.window.flip()
+        self.flip()
 
     def run_trial(self, trial):
         # Set parameters (all values are in degrees)
@@ -2662,7 +2545,7 @@ class Pong(Task):
             # Draw the stimuli and update the display
             ball.draw()
             paddle.draw()
-            self.window.flip()
+            self.flip()
 
         # Provide trial feedback
         self.display_trial_feedback(trial['display_trial_feedback'], trial['correct'])
@@ -2682,25 +2565,9 @@ class Affective(Task):
 
         self.stim = []
         for stim_file in self.trial_info['stim']:
-            stim_path = self.const.stim_dir / self.name / stim_file
+            stim_path = ut.find_stim(self.const, self.name, stim_file)
             self.stim.append(visual.ImageStim(self.window, image=str(stim_path)))
 
-    # RLM Edited
-    def display_instructionsOLD(self):
-        """
-        Display instructions for the affective task.
-        """
-        key_pleasant = self.trial_info['key_pleasant'].iloc[0]
-        key_unpleasant = self.trial_info['key_unpleasant'].iloc[0]
-
-        self.instruction_text = (
-            f"{self.descriptive_name} Task\n\n"
-            f"Press {key_unpleasant} if the image is UNPLEASANT.\n"
-            f"Press {key_pleasant} if the image is PLEASANT."
-        )
-        instr_visual = visual.TextStim(self.window, text=self.instruction_text, height=self.const.instruction_text_height, color=[-1, -1, -1], wrapWidth=20)
-        instr_visual.draw()
-        self.window.flip()
     
     def display_instructions(self):
         """ Display localized instructions for the affective task with dynamic rating key mappings """
@@ -2734,7 +2601,7 @@ class Affective(Task):
             wrapWidth=20
         )
         instr_visual.draw()
-        self.window.flip()
+        self.flip()
 
     def run_trial(self, trial):
         """
@@ -2744,7 +2611,7 @@ class Affective(Task):
 
         # Display image
         self.stim[trial['trial_num']].draw()
-        self.window.flip()
+        self.flip()
 
         # Wait for response
         trial['response'], trial['rt'] = self.wait_response(self.ttl_clock.get_time(), trial['trial_dur'])
@@ -2771,14 +2638,13 @@ class SerialReactionTime(Task):
         """
         trial_info_file = self.const.task_dir / self.name / self.task_file
         self.trial_info = pd.read_csv(trial_info_file, sep='\t')
-        self.corr_key = [self.trial_info['key_one'].iloc[0],self.trial_info['key_two'].iloc[0],self.trial_info['key_three'].iloc[0],self.trial_info['key_four'].iloc[0]]
 
 
     def display_instructions(self): # overriding the display instruction from the parent class
         self.instruction_text = f"Press the buttons that match the green boxes"
         instr_visual = visual.TextStim(self.window, text=self.instruction_text, color=[-1, -1, -1],pos=(0, 0.3))
         instr_visual.draw()
-        self.window.flip()
+        self.flip()
 
     def run(self):
         """Override to show empty boxes during initial wait."""
@@ -2793,7 +2659,7 @@ class SerialReactionTime(Task):
         ]
         for box in self.boxes:
             box.draw()
-        self.window.flip()
+        self.flip()
         return super().run()
 
     def run_trial(self, trial):
@@ -2810,7 +2676,7 @@ class SerialReactionTime(Task):
         for j, box in enumerate(self.boxes):
             box.fillColor = 'green' if j == target_index else 'white'
             box.draw()
-        self.window.flip()
+        self.flip()
 
         # keep green on for trial_dur
         self.ttl_clock.wait_until(stim_onset + trial['trial_dur'])
@@ -2819,7 +2685,7 @@ class SerialReactionTime(Task):
         for box in self.boxes:
             box.fillColor = 'white'
             box.draw()
-        self.window.flip()
+        self.flip()
 
         # collect responses until absolute end_time
         responses = []
@@ -2853,7 +2719,7 @@ class FingerRhythmic(Task):
         self.instruction_text = f"{self.descriptive_name} Task\n\n {str1} \n {str2}"
         instr_visual = visual.TextStim(self.window, text=self.instruction_text, height=self.const.instruction_text_height, color=[-1, -1, -1])
         instr_visual.draw()
-        self.window.flip()
+        self.flip()
 
     def run_trial(self, trial):
         """ Runs a single trial of the Finger Rhythmic task """
@@ -2861,7 +2727,7 @@ class FingerRhythmic(Task):
         event.clearEvents()
         txt = (f"New trial starts now") # this text shows when a new trials starts
         visual.TextStim(self.window, text=txt,height=self.const.instruction_text_height, color=[-1, -1, -1]).draw()
-        self.window.flip()
+        self.flip()
         self.ttl_clock.wait_until(self.ttl_clock.get_time() + 2)
 
         self.screen.fixation_cross()
@@ -2972,7 +2838,7 @@ class TimePerception(Task):
             str4 = "The first pair is always the same."
             self.instruction_text = f"{self.descriptive_name} Task\n\n {str1} \n {str2} \n {str3} \n {str4}"
         visual.TextStim(self.window, text=self.instruction_text, height=self.const.instruction_text_height, color=[-1, -1, -1]).draw()
-        self.window.flip()
+        self.flip()
 
     def run_trial(self, trial):
         event.clearEvents()
@@ -3160,7 +3026,7 @@ class SensMotControl(Task):
         instr_visual = visual.TextStim(self.window, text=self.instruction_text,
                                        height=self.const.instruction_text_height, color=[-1, -1, -1], wrapWidth=25, pos=(0, 0))
         instr_visual.draw()
-        self.window.flip()
+        self.flip()
 
     def run_trial(self, trial):
 
@@ -3168,13 +3034,13 @@ class SensMotControl(Task):
 
         # --- 1) Fixation circle (1000 ms) ---
         visual.Circle(self.window, radius=3, edges=128, lineWidth=4, lineColor='black', fillColor=None).draw()
-        self.window.flip()
+        self.flip()
         self.ttl_clock.wait_until(self.ttl_clock.get_time() + 1)
         self.ttl_clock.update()
 
         # --- 2) Colored circle (2000 ms) ---
         visual.Circle(self.window, radius=3, edges=128,lineWidth=6, fillColor= trial['stim'], lineColor=trial['stim']).draw()
-        self.window.flip()
+        self.flip()
 
         # collect responses 0: no response 1-4: key pressed
         trial['response'], trial['rt'] = self.wait_response(self.ttl_clock.get_time(), trial['question_dur'])
@@ -3189,7 +3055,40 @@ class SensMotControl(Task):
             self.window.flip(clearBuffer=True)
             while self.ttl_clock.get_time() < trial['end_time']:
                 # flip blank frames so the window stays responsive
-                self.window.flip()
+                self.flip()
                 self.ttl_clock.update()
 
         return trial
+    
+
+
+
+
+
+
+
+
+
+
+
+        
+
+        
+        
+
+
+
+
+
+
+
+
+
+
+
+
+
+        
+
+
+    
