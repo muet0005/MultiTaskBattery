@@ -10,7 +10,8 @@ class TTLClock:
         self.clock      = core.Clock() #
         self.ttl_count      = 0    # the number of ttl pulses
         self.ttl_time       = 0    # time stamp of the last incoming ttl pulse
-        self.ttl_button = 't'  # the button used for simulating a ttl pulse
+        #self.ttl_button = 't'  # the button used for simulating a ttl pulse
+        self.ttl_button = '5'
 
     def reset(self, start_time=0):
         """ resets the clock and ttl-counter

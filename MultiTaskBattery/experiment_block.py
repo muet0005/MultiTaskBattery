@@ -16,7 +16,8 @@ from MultiTaskBattery.screen import Screen
 
 
 class Experiment:
-    def __init__(self, const, subj_id):
+    # RLM Added session_Timestamp. 
+    def __init__(self, const, subj_id, session_timestamp=None):
         """    A general class with attributes common to experiments
 
                Args: 
@@ -34,6 +35,14 @@ class Experiment:
         self.run_number = 0
         self.const = const
         self.ttl_clock = TTLClock()
+
+        # RLM
+        # Assign the session timestamp passed from run.py. Fallback to current time if missing.
+        if session_timestamp is None:
+            self.session_timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        else:
+            self.session_timestamp = session_timestamp
+            
         # open screen and display fixation cross
         ### set the resolution of the subject screen here:
         self.screen = Screen(const.screen)
@@ -89,6 +98,56 @@ class Experiment:
             self.run_filename = 'run_01.tsv'
             self.wait_ttl = True
 
+    def confirm_run_info_genr(self):
+        """
+        Presents a GUI to confirm the settings for the run:
+
+        The following parameters will be set:
+        run_number      - run number
+        subj_id         - id assigned to the participant
+        subj_gender     - gender of the participant (for GenR)
+        subj_dob        - date of birth of the participant (for GenR)
+
+        Args:
+        """
+        if not self.const.debug:
+            # Step 1: Create a temporary small window for user feedback
+            self.screen.start_screen()
+
+            # a dialog box pops up so you can enter info
+            #Set up input box
+            inputDlg = gui.Dlg(title = f"{self.exp_name}")
+            inputDlg.addField('Rnummer:',initial = 'R')      #Participant ID. 
+            inputDlg.addField('Gender', choices=['Man', 'Vrouw', 'non-Binary'])      # run number (int)
+            inputDlg.addField('Year of Birth (YYYY):', '')
+            inputDlg.addField('Month of Birth (MM):', '')
+            inputDlg.addField('Day of Birth (DD):', '')
+            inputDlg.addField('Language:', choices=['nl', 'en'])
+            inputDlg.show()
+
+            if inputDlg.OK:
+                self.subj_id        = str(inputDlg.data[0])
+                self.gender = str(inputDlg.data[1])
+                dob = str(inputDlg.data[2]) + '-' + str(inputDlg.data[3]) + '-' + str(inputDlg.data[4])
+                self.dob = datetime.strptime(dob, "%Y-%m-%d")
+                self.language = inputDlg.data[5] # Captures 'en' or 'nl' from the dropdown
+                self.wait_ttl = True
+                print(f"Session Initialized -> Participant: {self.subj_id} | Language Preference: {self.language}")
+                if not self.subj_id.startswith('R') or not len(self.subj_id.split('R')[-1]) == 6:
+                    print('R number entered incorrectly...')
+                    sys.exit()
+            else:
+                sys.exit()
+
+        else:
+            print("running in debug mode")
+            # pass on the values for your debugging with the following keywords
+            self.subj_id = 'test00'
+            self.run_number = self.run_number+1
+            self.run_filename = 'run_01.tsv'
+            self.wait_ttl = True
+
+
     def init_run(self):
         """initializing the run:
             making sure a directory is created for the behavioral results
@@ -120,6 +179,46 @@ class Experiment:
         subj_dir = self.const.data_dir / self.subj_id
         ut.dircheck(subj_dir) # making sure the directory is created!
         self.run_data_file = self.const.data_dir / self.subj_id / f"{self.subj_id}.tsv"
+    
+    def init_run_genr(self):
+        """initializing the run:
+            making sure a directory is created for the behavioral results
+            getting run file
+            Initializes all the tasks for a run
+        """
+
+        # 1. get the run file info: creates self.run_info
+        self.run_info = pd.read_csv(self.const.run_dir / self.run_filename,sep='\t')
+
+        # 2. Initialize the all tasks that we need
+        self.task_obj_list = [] # a list containing task objects in the run
+        for t_num, task_info in self.run_info.iterrows():
+            # create a task object for the current task, reads the trial file, and append it to the list
+            t = ut.task_table[ut.task_table['name']== task_info.task_name]
+            task_info['code'] = t.code
+            print('I AM HERE!!!!!!!!!', t.descriptive_name)
+            print(t)
+            task_info['descriptive_name'] = t.descriptive_name.iloc[0].capitalize()
+            # RLM
+            task_info['language'] = getattr(self, 'language', 'en')
+            class_name = t.task_class.iloc[0]
+            TaskClass = getattr(tasks, class_name)
+            Task_obj  = TaskClass(task_info,
+                                 screen = self.screen,
+                                 ttl_clock = self.ttl_clock,
+                                 const = self.const,
+                                 subj_id = self.subj_id)
+            Task_obj.init_task()
+            self.task_obj_list.append(Task_obj)
+        
+        # 3. make subject folder in data/raw/<subj_id>
+        #subj_dir = self.const.data_dir / self.subj_id
+        # RLM adapted for GenR
+        subj_dir = self.const.exp_dir / 'output' / self.subj_id / self.session_timestamp
+        ut.dircheck(subj_dir) # making sure the directory is created!
+        #self.run_data_file = self.const.data_dir / self.subj_id / f"{self.subj_id}.tsv"
+        # RLM adapted for GenR
+        self.run_data_file = subj_dir / f"{self.subj_id}_{self.session_timestamp}.tsv"
 
     def run(self):
         """

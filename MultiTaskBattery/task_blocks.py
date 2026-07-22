@@ -33,7 +33,7 @@ class Task:
     (VisualSearch, SemanticPrediction, NBack, SocialPrediction, ActionObservation).
     """
 
-    def __init__(self, info, screen, ttl_clock, const, subj_id):
+    def __init__OLD(self, info, screen, ttl_clock, const, subj_id):
 
         # Pointers to Screen and experimental constants
         self.screen             = screen
@@ -48,6 +48,111 @@ class Task:
 
         # Set the instruction text height to a value defined in the constants, or use default - useful for smaller screens
         self.const.instruction_text_height = getattr(self.const, 'instruction_text_height', None) or 1
+        # RLM
+        self.language = getattr(info, 'language', 'en')
+        # 2. Extract localized instructions from task_details.json dynamically
+        self.instruction_text = ""
+        try:
+            #RLM Edited
+            json_path = Path(self.const.exp_dir) / 'task_details.json'
+            if not json_path.exists():
+                json_path = Path(__file__).parent / 'task_details.json'
+            if json_path.exists():
+                with open(json_path, 'r', encoding='utf-8') as f:
+                    details = json.load(f)
+                
+                # Check if the active task key exists inside the configuration file
+                if self.name in details and 'instructions' in details[self.name]:
+                    # Grab chosen language string, fallback to english if translation missing
+                    self.instruction_text = details[self.name]['instructions'].get(self.language, "")
+                else:
+                    print(f"Warning: Found task_details.json but key '{self.name}' or its 'instructions' block is missing.")   
+            else:
+                print(f"Warning: Could not find task_details.json at {json_path}")
+        except Exception as e:
+            print(f"Warning: Failed to load localization parameters for task '{self.name}': {e}")
+
+    def __init__(self, info, screen, ttl_clock, const, subj_id):
+
+        # Pointers to Screen and experimental constants
+        self.screen             = screen
+        self.window             = screen.window 
+        self.const              = const
+        self.ttl_clock          = ttl_clock  
+        
+        # --- Diagnostic ---
+        if isinstance(info, dict) or hasattr(info, 'get'):
+            print(f"info['name']: {info.get('name')}")
+            print(f"info['task_name']: {info.get('task_name')}")
+            print(f"info['descriptive_name']: {info.get('descriptive_name')}")
+        else:
+            print(f"info (printed raw): {info}")
+        
+        # Extract and clean name
+        raw_name = info.get('name') or info.get('task_name') or ""
+        self.name = str(raw_name).strip().lower()
+        print(f"Sanitized self.name assigned as: '{self.name}'")
+        
+        self.descriptive_name   = info.get('descriptive_name', '')
+        self.code               = info.get('task_code') or info.get('code', '')
+        self.task_file          = info.get('task_file', '')
+        self.feedback_type      = 'none'
+
+        self.const.instruction_text_height = getattr(self.const, 'instruction_text_height', None) or 1
+
+        # 3. Normalize string and default to English if nothing was found
+        self.language = info.get('language', 'en')
+        print(f"Language structurally resolved to: '{self.language}'")
+        # Force-register the proper localized text right before finishing base initialization
+        if hasattr(self, 'get_task_instructions'):
+            try:
+                self.instructions = self.get_task_instructions()
+            except Exception:
+                pass
+
+
+        # --- Diagnostic ---
+        self.instruction_text = ""
+        try:
+            json_path = Path(self.const.exp_dir) / 'task_details.json'
+            if not json_path.exists():
+                print(f"Primary path missing. falling back on default in parent directory...")
+                json_path = Path(__file__).parent / 'task_details.json'
+                
+            print(f"Resolved JSON file path: {json_path.absolute()}")
+            
+            if json_path.exists():
+                with open(json_path, 'r', encoding='utf-8') as f:
+                    details = json.load(f)
+                
+                print(f"JSON loaded successfully. Available keys: {list(details.keys())[:8]}...")
+                
+                # Check for direct match or substring matching
+                matched_key = None
+                if self.name in details:
+                    matched_key = self.name
+                else:
+                    # Look for substring match (e.g., if self.name is 'movieme', find 'movie')
+                    for key in details.keys():
+                        if key in self.name or self.name in key:
+                            matched_key = key
+                            print(f"Substring match found! Connected '{self.name}' to JSON key '{key}'")
+                            break
+                
+                if matched_key:
+                    if 'instructions' in details[matched_key]:
+                        self.instruction_text = details[matched_key]['instructions'].get(self.language, "")
+                        print(f"SUCCESS: Found instructions for '{matched_key}' in '{self.language}'!")
+                    else:
+                        print(f"Warning: Key '{matched_key}' found in JSON, but it has no 'instructions' block.")
+                else:
+                    print(f"ERROR: Could not match task name '{self.name}' to any key in task_details.json.")
+            else:
+                print(f"CRITICAL ERROR: task_details.json cannot be found anywhere.")
+        except Exception as e:
+            print(f"PYTHON CRASH IN LOCALIZATION: {e}")
+            import traceback
+            traceback.print_exc()
 
     def init_task(self):
         """
@@ -55,7 +160,8 @@ class Task:
         """
         self.trial_info = pd.read_csv(self.const.task_dir / self.name / self.task_file, sep='\t')
 
-    def display_instructions(self):
+    # RLM Edited
+    def display_instructionsOLD(self):
         """
         displays the instruction for the task
         Most tasks have the same instructions. (Tasks that have True/False responses)
@@ -72,6 +178,44 @@ class Task:
         instr_visual.draw()
         self.window.flip()
     
+        """ Displays localized JSON text, falling back to basic True/False keys """
+        if not self.instruction_text:
+            # Fallback only if JSON lookup failed or was missing
+            true_str = f"if True press {self.const.response_keys[1]}"
+            false_str = f"if False press {self.const.response_keys[2]}"
+            text_to_display = f"{self.descriptive_name} Task\n\n {true_str} \n {false_str}"
+        else:
+            text_to_display = self.instruction_text
+
+        instr_visual = visual.TextStim(
+            self.window, 
+            text=text_to_display, 
+            height=self.const.instruction_text_height, 
+            color=[-1, -1, -1],
+            wrapWidth=25
+        )
+        instr_visual.draw()
+        self.window.flip()
+        
+    def display_instructions(self):
+        """
+        Displays the task instructions on the screen.
+        """
+        # If __init__ successfully found our Dutch translation, use it!
+        # Otherwise, fall back to whatever the child class hardcoded.
+        instr_text = getattr(self, 'instruction_text', None) or getattr(self, 'instructions', 'No instructions found.')
+
+        # Render the text straight to the PsychoPy window
+        instr_visual = visual.TextStim(
+            self.window, 
+            text=instr_text, 
+            color=[-1, -1, -1], 
+            wrapWidth=25, 
+            pos=(0, 0)
+        )
+        instr_visual.draw()
+        self.window.flip()
+
     def run(self):
         """Loop over trials and collects data
         Data will be stored in self.trial_data
@@ -102,7 +246,7 @@ class Task:
 
     def show_progress(self, seconds_left, show_last_seconds=5, height=1, width=10, x_pos=-5, y_pos=8):
         """ Displays a progress bar for the Picture Sequence task
-   Args:
+        Args:
         seconds_left (float): 
             The number of seconds remaining in the current trial. 
             If this value is greater than `show_last_seconds`, the progress bar is not shown.
@@ -249,7 +393,7 @@ class NBack(Task):
             self.stim.append(img)
         self.corr_key = [self.trial_info['key_nomatch'].iloc[0], self.trial_info['key_match'].iloc[0]]
 
-    def display_instructions(self):
+    def display_instructionsOLD(self):
         """
         displays the instruction for the task
         """
@@ -258,6 +402,38 @@ class NBack(Task):
         str3 = f"if no match, press {self.corr_key[0]}"
         self.instruction_text = f"{self.descriptive_name} Task\n\n {str1} \n {str2} \n {str3}"
         instr_visual = visual.TextStim(self.window, text=self.instruction_text, height=self.const.instruction_text_height, color=[-1, -1, -1])
+        instr_visual.draw()
+        self.window.flip()
+
+    # RLM edited 
+    def display_instructions(self):
+        """ Displays localized instruction text with dynamic response key mapping """
+        
+        # 1. Fallback text if the json lookup failed completely
+        if not self.instruction_text:
+            str1 = "BLAH!!! Compare image to the one shown 2 previously"
+            str2 = f"if match, press {self.corr_key[1]}"
+            str3 = f"if no match, press {self.corr_key[0]}"
+            text_to_display = f"{self.descriptive_name} Task\n\n {str1} \n {str2} \n {str3}"
+        else:
+            # 2. Inject the runtime scanner keys straight into the translated string
+            try:
+                text_to_display = self.instruction_text.format(
+                    match_key=self.corr_key[1],
+                    no_match_key=self.corr_key[0]
+                )
+            except KeyError:
+                # Shield against a typo in the JSON key formatting names
+                text_to_display = self.instruction_text
+
+        # 3. Render the formatted result to the display window
+        instr_visual = visual.TextStim(
+            self.window, 
+            text=text_to_display, 
+            height=self.const.instruction_text_height, 
+            color=[-1, -1, -1],
+            wrapWidth=25
+        )
         instr_visual.draw()
         self.window.flip()
 
@@ -292,10 +468,18 @@ class Rest(Task):
         super().__init__(info, screen, ttl_clock, const, subj_id)
         self.name          = 'rest'
 
-    def display_instructions(self): # overriding the display instruction routine from the parent
-        self.instruction_text = 'Rest: Fixate on the cross'
+    # RLM EDITED
+    def display_instructionsOLD(self): # overriding the display instruction routine from the parent
+        self.instruction_text = 'BLAH!!  Rest: Fixate on the cross'
         instr_visual = visual.TextStim(self.window, text=self.instruction_text, height=self.const.instruction_text_height, color=[-1, -1, -1])
         # instr.size = 0.8
+        instr_visual.draw()
+        self.window.flip()
+    
+    def display_instructions(self):
+        """ Display localized fixation rest instructions """
+        text_to_display = self.instruction_text if self.instruction_text else "Rest"
+        instr_visual = visual.TextStim(self.window, text=text_to_display, height=self.const.instruction_text_height, color=[-1, -1, -1], wrapWidth=25)
         instr_visual.draw()
         self.window.flip()
 
@@ -399,9 +583,17 @@ class AuditoryNarrative(Task):
     def __init__(self, info, screen, ttl_clock, const, subj_id):
         super().__init__(info, screen, ttl_clock, const, subj_id)
 
-    def display_instructions(self):
-        self.instruction_text = f'{self.descriptive_name} Task\n\nListen to the narrative attentively.'
+    # RLM EDITED
+    def display_instructionsOLD(self):
+        self.instruction_text = f'{self.descriptive_name} BLAH Task\n\nListen to the narrative attentively.'
         instr_visual = visual.TextStim(self.window, text=self.instruction_text, height=self.const.instruction_text_height, color=[-1, -1, -1])
+        instr_visual.draw()
+        self.window.flip()
+    
+    def display_instructions(self):
+        """ Display localized instructions for the auditory storytelling block """
+        text_to_display = self.instruction_text if self.instruction_text else f"{self.descriptive_name} Task"
+        instr_visual = visual.TextStim(self.window, text=text_to_display, height=self.const.instruction_text_height, color=[-1, -1, -1], wrapWidth=25)
         instr_visual.draw()
         self.window.flip()
 
@@ -411,10 +603,26 @@ class AuditoryNarrative(Task):
 
         # Load and play audio stimulus for the current trial
         audio_path = self.const.stim_dir / self.name / trial['stim']
-        audio_stim = sound.Sound(str(audio_path))
-        audio_stim.play()
+        # RLM ADATPED
+        # audio_stim = sound.Sound(str(audio_path))
+        # audio_stim.play()
 
-        trial_dur = audio_stim.getDuration()
+        # trial_dur = audio_stim.getDuration()
+
+	# --- BYPASS PSYCHOPY AUDIO COMPONENT ---
+        import sounddevice as sd
+        import soundfile as sf
+        
+        # Read the raw sound array and hardware sample rate directly
+        data, fs = sf.read(str(audio_path))
+        
+        # Fire it straight to Core Audio
+        sd.play(data, fs)
+        
+        # Calculate duration dynamically from the file matrix
+        trial_dur = len(data) / fs
+        # ----------------------------------------
+
 
         # wait for trial duration
         self.ttl_clock.wait_until(self.ttl_clock.get_time() + trial['trial_dur'])
@@ -423,7 +631,6 @@ class AuditoryNarrative(Task):
         self.display_trial_feedback(give_feedback= trial['display_trial_feedback'], correct_response = None)
 
         return trial
-
 
 class SpatialNavigation(Task):
     def __init__(self, info, screen, ttl_clock, const, subj_id):
@@ -579,9 +786,17 @@ class ActionObservation(Task):
     def __init__(self, info, screen, ttl_clock, const, subj_id):
         super().__init__(info, screen, ttl_clock, const, subj_id)
 
-    def display_instructions(self): # overriding the display instruction from the parent class
-        self.instruction_text = f"{self.descriptive_name} Task \n\n Keep your head still while watching the two clips. \n\n Try and remember the knot shown."
+    # RLM EDITED
+    def display_instructionsOLD(self): # overriding the display instruction from the parent class
+        self.instruction_text = f"{self.descriptive_name}  Task \n\n Keep your head still while watching the two clips. \n\n Try and remember the knot shown."
         instr_visual = visual.TextStim(self.window, text=self.instruction_text, height=self.const.instruction_text_height, color=[-1, -1, -1])
+        instr_visual.draw()
+        self.window.flip()
+    
+    def display_instructions(self):
+        """ Display localized instructions for the knot observing task """
+        text_to_display = self.instruction_text if self.instruction_text else f"{self.descriptive_name} BLAH Task"
+        instr_visual = visual.TextStim(self.window, text=text_to_display, height=self.const.instruction_text_height, color=[-1, -1, -1], wrapWidth=25)
         instr_visual.draw()
         self.window.flip()
 
@@ -630,7 +845,8 @@ class DemandGrid(Task):
         self.trial_info = pd.read_csv(trial_info_file, sep='\t')
         self.corr_key = [self.trial_info['key_left'].iloc[0],self.trial_info['key_right'].iloc[0]]
 
-    def display_instructions(self):
+    # RLM EDITED
+    def display_instructionsOLD(self):
         """
         displays the instruction for the task
         """
@@ -639,6 +855,32 @@ class DemandGrid(Task):
         str3 = f"if right, press {self.corr_key[1]}"
         self.instruction_text = f"{self.descriptive_name} Task\n\n {str1} \n {str2} \n {str3}"
         instr_visual = visual.TextStim(self.window, text=self.instruction_text, height=self.const.instruction_text_height, color=[-1, -1, -1])
+        instr_visual.draw()
+        self.window.flip()
+    
+    def display_instructions(self):
+        """ Display localized instructions for spatial demand grid with dynamic key mapping """
+        if not self.instruction_text:
+            str1 = "BLAH !You will watch the sequence of boxes that light up and then choose the correct pattern"
+            str2 = f"if left, press {self.corr_key[0]}"
+            str3 = f"if right, press {self.corr_key[1]}"
+            text_to_display = f"{self.descriptive_name} BLAH Task\n\n {str1} \n {str2} \n {str3}"
+        else:
+            try:
+                text_to_display = self.instruction_text.format(
+                    left_key=self.corr_key[0],
+                    right_key=self.corr_key[1]
+                )
+            except KeyError:
+                text_to_display = self.instruction_text
+
+        instr_visual = visual.TextStim(
+            self.window, 
+            text=text_to_display, 
+            height=self.const.instruction_text_height, 
+            color=[-1, -1, -1],
+            wrapWidth=25
+        )
         instr_visual.draw()
         self.window.flip()
 
@@ -929,9 +1171,17 @@ class FingerSequence(Task):
         self.corr_key = [self.trial_info['key_one'].iloc[0],self.trial_info['key_two'].iloc[0],self.trial_info['key_three'].iloc[0],self.trial_info['key_four'].iloc[0]]
 
 
-    def display_instructions(self):
+    # RLM EDITED
+    def display_instructionsOLD(self):
         self.instruction_text = f"{self.descriptive_name} Task \n\n Using your four fingers, press the keys in the order shown on the screen\n Use all four fingers for this task"
         instr_visual = visual.TextStim(self.window, text=self.instruction_text, height=self.const.instruction_text_height, color=[-1, -1, -1])
+        instr_visual.draw()
+        self.window.flip()
+    
+    def display_instructions(self):
+        """ Display localized instructions for finger sequencing """
+        text_to_display = self.instruction_text if self.instruction_text else f"{self.descriptive_name} Task"
+        instr_visual = visual.TextStim(self.window, text=text_to_display, height=self.const.instruction_text_height, color=[-1, -1, -1], wrapWidth=25)
         instr_visual.draw()
         self.window.flip()
 
@@ -1227,7 +1477,6 @@ class SemanticSwitching(Task):
         )
 
         return trial
-
     
 class VisualSearch(Task):
 
@@ -1345,7 +1594,6 @@ class VisualSearch(Task):
         self.display_trial_feedback(trial['display_trial_feedback'], trial['correct'])
 
         return trial
-
 
 class RMET(Task):
     def __init__(self, info, screen, ttl_clock, const, subj_id):
@@ -1609,7 +1857,6 @@ class PictureSequence(Task):
 
         return trial
 
-
 class StorySequence(Task):
     def __init__(self, info, screen, ttl_clock, const, subj_id):
         super().__init__(info, screen, ttl_clock, const, subj_id)
@@ -1815,12 +2062,20 @@ class Movie(Task):
         super().__init__(info, screen, ttl_clock, const, subj_id)
         self.name = 'movie'
 
-    def display_instructions(self):
+    # RLM EDITED
+    def display_instructionsOLD(self):
         task_name = visual.TextStim(self.window, text=f'{self.descriptive_name.capitalize()}', height=self.const.instruction_text_height, color=[-1, -1, -1], bold=True, pos=(0, 3))
         task_name.draw()
 
         self.instruction_text = f"\n\n You will watch short clips from a movie. Please keep your head still and pay attention to the screen."
         instr_visual = visual.TextStim(self.window, text=self.instruction_text, height=self.const.instruction_text_height, color=[-1, -1, -1], wrapWidth=20, pos=(0, 0))
+        instr_visual.draw()
+        self.window.flip()
+
+    def display_instructions(self):
+        """ Display localized instructions for passive movie watching """
+        text_to_display = self.instruction_text if self.instruction_text else f"{self.descriptive_name} Task"
+        instr_visual = visual.TextStim(self.window, text=text_to_display, height=self.const.instruction_text_height, color=[-1, -1, -1], wrapWidth=25)
         instr_visual.draw()
         self.window.flip()
 
@@ -1857,7 +2112,6 @@ class Movie(Task):
         gc.collect() # Collect garbarge
 
         return trial
-
 
 class StrangeStories(Task):
     def __init__(self, info, screen, ttl_clock, const, subj_id):
@@ -1986,7 +2240,6 @@ class StrangeStories(Task):
 
         return trial
 
-
 class FauxPas(Task):
     def __init__(self, info, screen, ttl_clock, const, subj_id):
         super().__init__(info, screen, ttl_clock, const, subj_id)
@@ -2056,7 +2309,6 @@ class FauxPas(Task):
         self.display_trial_feedback(trial['display_trial_feedback'], trial['correct'])
 
         return trial
-
 
 class FrithHappe(Task):
     def __init__(self, info, screen, ttl_clock, const, subj_id):
@@ -2145,8 +2397,6 @@ class FrithHappe(Task):
         gc.collect() # Collect garbarge
 
         return trial
-
-
 
 class Liking(Task):
     def __init__(self, info, screen, ttl_clock, const, subj_id):
@@ -2435,7 +2685,8 @@ class Affective(Task):
             stim_path = self.const.stim_dir / self.name / stim_file
             self.stim.append(visual.ImageStim(self.window, image=str(stim_path)))
 
-    def display_instructions(self):
+    # RLM Edited
+    def display_instructionsOLD(self):
         """
         Display instructions for the affective task.
         """
@@ -2448,6 +2699,40 @@ class Affective(Task):
             f"Press {key_pleasant} if the image is PLEASANT."
         )
         instr_visual = visual.TextStim(self.window, text=self.instruction_text, height=self.const.instruction_text_height, color=[-1, -1, -1], wrapWidth=20)
+        instr_visual.draw()
+        self.window.flip()
+    
+    def display_instructions(self):
+        """ Display localized instructions for the affective task with dynamic rating key mappings """
+        # Extract the key codes dynamically from the active trial configuration dataframe
+        key_pleasant = self.trial_info['key_pleasant'].iloc[0]
+        key_unpleasant = self.trial_info['key_unpleasant'].iloc[0]
+
+        # 1. Fallback text if the json file lookup failed entirely
+        if not self.instruction_text:
+            text_to_display = (
+                f"{self.descriptive_name} BLAH Task\n\n"
+                f"Press {key_unpleasant} if the image is UNPLEASANT.\n"
+                f"Press {key_pleasant} if the image is PLEASANT."
+            )
+        else:
+            # 2. Inject the trial-level button configurations straight into the translated string
+            try:
+                text_to_display = self.instruction_text.format(
+                    unpleasant_key=key_unpleasant,
+                    pleasant_key=key_pleasant
+                )
+            except KeyError:
+                text_to_display = self.instruction_text
+
+        # 3. Render the formatted results to the subject screen
+        instr_visual = visual.TextStim(
+            self.window, 
+            text=text_to_display, 
+            height=self.const.instruction_text_height, 
+            color=[-1, -1, -1], 
+            wrapWidth=20
+        )
         instr_visual.draw()
         self.window.flip()
 
@@ -2644,7 +2929,6 @@ class FingerRhythmic(Task):
         trial['beep_times_rel_s_json'] = json.dumps(beep_times_rel)
 
         return trial
-
 
 class TimePerception(Task):
     def __init__(self, info, screen, ttl_clock, const, subj_id):
