@@ -31,7 +31,11 @@
         "short_description": "30s clips of planet earth documentary or of a pixar movie, no audio no subtitles",
         "reference": "Planet Earth and Pixar UP\" movie as used in King, M. et al. (2019) ‘Functional boundaries in the human cerebellum revealed by a multi-domain task battery’, Nature Neuroscience, 22(8), pp. 1371–1378. Available at: https://doi.org/10.1038/s41593-019-0436-x.",
         "conditions": "romance,landscape,nature",
-        "recorded_metrics": "None"
+        "recorded_metrics": "None",
+        "instructions": {
+            "en": "Movie Task\n\nWatch the clip closely.\nKeep your head completely still.",
+            "nl": "Film Taak\n\nBekijk het fragment aandachtig.\nHoud je hoofd helemaal stil."
+        }
     },
     "oddball": {
         "detailed_description": "A rapid visual oddball detection task. On each trial a letter ('K' or 'O') is briefly shown in either black or red. Participants must press a button when they see a red 'K' (the target) and withhold responses to all other stimuli. The task is designed to engage attention and executive control .",
@@ -122,7 +126,11 @@
         },
         "short_description": "2AFC, a set of grids is shown one by one on the screen with certain boxes colored blue. After the sequnece, two options are given for the combination of blue boxes across shown grids",
         "reference": "Fedorenko, E., Duncan, J., & Kanwisher, N. (2013). Broad domain generality in focal regions of frontal and parietal cortex. Proceedings of the National Academy of Sciences of the United States of America, 110(41), 16616�16621.",
-        "recorded_metrics": "Accuracy + RT"
+        "recorded_metrics": "Accuracy + RT",
+        "instructions": {
+            "en": "Demand Grid Task\n\nMentally combine the sequences of blue boxes shown.\n\nIf the LEFT option matches, press {left_key}\nIf the RIGHT option matches, press {right_key}",
+            "nl": "Raster Taak\n\nCombineer in gedachten de reeksen van blauwe vakken die verschijnen.\n\nAls de LINKER optie klopt, druk op {left_key}\nAls de RECHTER optie klopt, druk op {right_key}"
+        }
     },
     "action_observation": {
         "detailed_description": "Participants watch videos of knots being tied (action condition) and 360-degree views of completed knots (knot condition). The first trial in a block shows the knot-tying action, and subsequent trials show the static knot view. No motor response is required. The task is designed to engage action observation.",
@@ -151,7 +159,11 @@
         },
         "short_description": "Watch a video where the first half a knot is tied, second half a 360 view of the knot is shown.",
         "conditions": "action, knot",
-        "recorded_metrics": "None"
+        "recorded_metrics": "None",
+        "instructions": {
+            "en": "Action Observation Task\n\nKeep your head still while watching the two clips.\n\nTry and remember the knot shown.",
+            "nl": "Actie Observatie Taak\n\nHoud je hoofd stil tijdens het bekijken van de twee fragmenten.\n\nProbeer de getoonde knoop te onthouden."
+        }
     },
     "visual_search": {
         "detailed_description": "Participants view a display of geometric shapes at different rotations (90, 180, 270, 360 degrees) and must determine whether the target shape (at 90 degrees) is present. On easy trials 4 shapes are shown, on hard trials 8 shapes are shown. Participants press one button if the target is present and another if it is absent. The task is designed to engage selective visual attention and eye-movement control.",
@@ -260,7 +272,11 @@
             }
         },
         "short_description": "Lie in scanner with a fixation cross.",
-        "recorded_metrics": "None"
+        "recorded_metrics": "None",
+        "instructions": {
+            "en": "Rest\n\nRelax and look directly at the fixation cross in the center of the screen.",
+            "nl": "Rust\n\nOntspan en kijk recht naar het fixatiekruis in het midden van het scherm."
+        }
     },
     "theory_of_mind": {
         "short_description": "Short story presented with a question at the end, participants must answer the question.",
@@ -361,6 +377,10 @@
                 "default": "['9.jpg', '11.jpg', '18.jpg', '28.jpg']",
                 "description": "List of stimulus image filenames to draw from."
             }
+        },
+        "instructions": {
+            "en": "N-Back Task\n\nCompare the letter to the one shown 2 steps back.\n\nIf it matches, press {match_key}\nIf it does NOT match, press {no_match_key}",
+            "nl": "N-Back Taak\n\nVergelijk de letter met de letter van 2 stappen terug.\n\nAls deze klopt, druk op {match_key}\nAls deze NIET klopt, druk op {no_match_key}"
         }
     },
     "tongue_movement": {
@@ -411,6 +431,10 @@
                 "default": "0",
                 "description": "Inter-trial interval duration in seconds."
             }
+        },
+        "instructions": {
+            "en": "Auditory Narrative Task\n\nListen carefully to the story.",
+            "nl": "Luistertaak\n\nLuister aandachtig naar het verhaal."
         }
     },
     "spatial_navigation": {
@@ -577,6 +601,10 @@
                 "default": "0.5",
                 "description": "Inter-trial interval duration in seconds."
             }
+        },
+        "instructions": {
+            "en": "Finger Sequence Task\n\nPress the buttons in the exact sequence shown on the screen.\n\nWork as fast and as accurately as possible.",
+            "nl": "Vingervolgorde Taak\n\nDruk op de knoppen in de exacte volgorde die op het scherm verschijnt.\n\nWerk zo snel en nauwkeurig mogelijk."
         }
     },
     "flexion_extension": {
@@ -841,7 +869,11 @@
     },
     "affective": {
         "short_description": "2 choice is the image pleasant or unpleasant",
-        "recorded_metrics": "Accuracy + RT"
+        "recorded_metrics": "Accuracy + RT",
+        "instructions": {
+            "en": "Emotion Task\n\nPress {unpleasant_key} if the image is UNPLEASANT.\nPress {pleasant_key} if the image is PLEASANT.",
+            "nl": "Emotie Taak\n\nDruk op {unpleasant_key} als de afbeelding ONPLEZIERIG is.\nDruk op {pleasant_key} als de afbeelding PLEZIERIG is."
+        }
     },
     "finger_rhythmic": {
         "short_description": "Assess the precision of internal timing mechanisms through a rhythmic tapping production task. Participants are instructed to produce a regular series of taps at a prescribed target interval.",
