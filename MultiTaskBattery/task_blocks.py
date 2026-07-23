@@ -631,18 +631,18 @@ class AuditoryNarrative(Task):
 
         # Load and play audio stimulus for the current trial
         audio_path = ut.find_stim(self.const, self.name, trial['stim'])
-        audio_stim = sound.Sound(str(audio_path))
-        audio_stim.play()
+        #audio_stim = sound.Sound(str(audio_path))
+        #audio_stim.play()
         # ----------------------------------------
 	    #if on apple silicone, this works --- BYPASS PSYCHOPY AUDIO COMPONENT ---
-        #import sounddevice as sd
-        #import soundfile as sf
+        import sounddevice as sd
+        import soundfile as sf
         
         # Read the raw sound array and hardware sample rate directly
-        #data, fs = sf.read(str(audio_path))
+        data, fs = sf.read(str(audio_path))
         
         # Fire it straight to Core Audio
-        #sd.play(data, fs)
+        sd.play(data, fs)
         # ----------------------------------------
 
         # wait for trial duration (fixation cross stays on screen during playback)
