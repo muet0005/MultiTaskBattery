@@ -1,0 +1,26 @@
+
+sudo dnf update
+sudo dfn install python3.10 python3.10-devel
+sudo dnf install python3.10 python3.10-devel
+sudo dnf install python3.10 python3.10-devel git gcc gcc-c++
+curl  -LsSf https://astral.sh/uv/install.sh | sh
+sudo dnf install gtk3-devel  gstreamer1-devel
+sudo dnf install gstreamer1-plugins-base-devel
+sudo dnf install freeglut-devel
+
+
+
+uv venv --python 3.10 mdtb
+source mdtb/bin/activate
+uv pip install -r requirements.txt 
+
+
+
+sudo dnf install openssh-server
+sudo systemctl status sshd
+sudo systemctl enable --now sshd
+sudo hostnamectl set-hostname mdtb
+sudo groupadd mdtb
+sudo usermod -aG mdtb rmuetzel
+sudo usermod -aG mdtb mock
+
