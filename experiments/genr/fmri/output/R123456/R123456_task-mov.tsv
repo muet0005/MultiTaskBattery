@@ -1,0 +1,5 @@
+run_num	trial_num	trial_dur	iti_dur	display_trial_feedback	stim	condition	start_time	end_time	real_start_time	start_ttl	start_ttl_time
+1	0	30	0	False	nature_01.mov	nature	0	30	110.0003420833964	1	110.00034262496048
+1	0	30	0	False	nature_01.mov	nature	0	30	145.00019520847127	1	145.00019575003537
+2	0	30	0	False	romance_01.mov	romance	0	30	110.00025220843963	1	110.00025270832704
+1	0	30	0	False	nature_01.mov	nature	0	30	40.00019741663709	1	40.000197958434

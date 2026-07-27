@@ -1,0 +1,16 @@
+trial_num	stim	trial_type	hand	trial_dur	iti_dur	key_unpleasant	key_pleasant	display_trial_feedback	start_time	end_time
+0	pleasant18.jpg	2	left	1.6	0.4	3	4	True	0.0	2.0
+1	pleasant17.jpg	2	left	1.6	0.4	3	4	True	2.0	4.0
+2	pleasant6.jpg	2	left	1.6	0.4	3	4	True	4.0	6.0
+3	pleasant13.jpg	2	left	1.6	0.4	3	4	True	6.0	8.0
+4	pleasant11.jpg	2	left	1.6	0.4	3	4	True	8.0	10.0
+5	unpleasant11.jpg	1	left	1.6	0.4	3	4	True	10.0	12.0
+6	unpleasant2.jpg	1	left	1.6	0.4	3	4	True	12.0	14.0
+7	unpleasant10.jpg	1	left	1.6	0.4	3	4	True	14.0	16.0
+8	unpleasant18.jpg	1	left	1.6	0.4	3	4	True	16.0	18.0
+9	unpleasant15.jpg	1	left	1.6	0.4	3	4	True	18.0	20.0
+10	pleasant26.jpg	2	left	1.6	0.4	3	4	True	20.0	22.0
+11	pleasant16.jpg	2	left	1.6	0.4	3	4	True	22.0	24.0
+12	unpleasant23.jpg	1	left	1.6	0.4	3	4	True	24.0	26.0
+13	unpleasant13.jpg	1	left	1.6	0.4	3	4	True	26.0	28.0
+14	unpleasant24.jpg	1	left	1.6	0.4	3	4	True	28.0	30.0
