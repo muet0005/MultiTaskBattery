@@ -46,7 +46,7 @@
         "recorded_metrics": "None",
         "instructions": {
             "en": "Movie Task\n\nWatch the clip closely.\nKeep your head completely still.",
-            "nl": "Film Taak\n\nBekijk het fragment aandachtig.\nHoud je hoofd helemaal stil."
+            "nl": "Film Taak\n\nBekijk het de video aandachtig.\nHoud je hoofd stil."
         }
     },
     "oddball": {
@@ -175,7 +175,7 @@
         "recorded_metrics": "Accuracy + RT",
         "instructions": {
             "en": "Demand Grid Task\n\nMentally combine the sequences of blue boxes shown.\n\nIf the LEFT option matches, press {left_key}\nIf the RIGHT option matches, press {right_key}",
-            "nl": "Raster Taak\n\nCombineer in gedachten de reeksen van blauwe vakken die verschijnen.\n\nAls de LINKER optie klopt, druk op {left_key}\nAls de RECHTER optie klopt, druk op {right_key}"
+            "nl": "Rastertaak\n\nCombineer in gedachten de drie plaatjes van blauwe vakken die verschijnen.\n\nAls de LINKER optie klopt, druk op {left_key}\nAls de RECHTER optie klopt, druk op {right_key}"
         }
     },
 "action_observation": {
@@ -216,7 +216,7 @@
         },
         "instructions": {
             "en": "Action Observation Task\n\nKeep your head still while watching the two clips.\n\nTry and remember the knot shown.",
-            "nl": "Actie Observatie Taak\n\nHoud je hoofd stil tijdens het bekijken van de twee fragmenten.\n\nProbeer de getoonde knoop te onthouden."
+            "nl": "Actie Observatie Taak\n\nHoud je hoofd stil tijdens het bekijken van de twee fragmenten.\n\nOnthoud hoe je de knoop maakt."
         }
     },
     "rest": {
@@ -232,7 +232,7 @@
         "recorded_metrics": "None",
         "instructions": {
             "en": "Rest\n\nRelax and look directly at the fixation cross in the center of the screen.",
-            "nl": "Rust\n\nOntspan en kijk recht naar het fixatiekruis in het midden van het scherm."
+            "nl": "Rust\n\nOntspan en kijk recht naar het kruisje in het midden van het scherm."
         }
     },
     
@@ -498,8 +498,8 @@
             }
         },
         "instructions": {
-            "en": "N-Back Task\n\nCompare the letter to the one shown 2 steps back.\n\nIf it matches, press {match_key}\nIf it does NOT match, press {no_match_key}",
-            "nl": "N-Back Taak\n\nVergelijk de letter met de letter van 2 stappen terug.\n\nAls deze klopt, druk op {match_key}\nAls deze NIET klopt, druk op {no_match_key}"
+            "en": "N-Back Task\n\nCompare the image to the one shown 2 steps back.\n\nIf it matches, press {match_key}\nIf it does NOT match, press {no_match_key}",
+            "nl": "N-Back Taak\n\nVergelijk de plaatje met het plaatje van 2 stappen terug.\n\nAls deze hetzelfde is, druk op {match_key}\nAls deze NIET hetzelfde is, druk op {no_match_key}"
         },
         "conditions": "Configurable (not predefined): set the memory load via the n-back level (e.g. 1-back / 2-back / 3-back)."
     },
@@ -722,7 +722,7 @@
         },
         "instructions": {
             "en": "Finger Sequence Task\n\nPress the buttons in the exact sequence shown on the screen.\n\nWork as fast and as accurately as possible.",
-            "nl": "Vingervolgorde Taak\n\nDruk op de knoppen in de exacte volgorde die op het scherm verschijnt.\n\nWerk zo snel en nauwkeurig mogelijk."
+            "nl": "Vingervolgorde Taak\n\nDruk op de knoppen in de volgorde die op het scherm verschijnt.\n\nWerk zo snel en nauwkeurig mogelijk."
         }
     },
     "toe_movement": {
@@ -973,7 +973,7 @@
         "recorded_metrics": "Accuracy + RT",
         "instructions": {
             "en": "Emotion Task\n\nPress {unpleasant_key} if the image is UNPLEASANT.\nPress {pleasant_key} if the image is PLEASANT.",
-            "nl": "Emotie Taak\n\nDruk op {unpleasant_key} als de afbeelding ONPLEZIERIG is.\nDruk op {pleasant_key} als de afbeelding PLEZIERIG is."
+            "nl": "Emotie Taak\n\nDruk op {unpleasant_key} als de afbeelding ONPRETTIG is.\nDruk op {pleasant_key} als de afbeelding PRETTIG is."
         },
         "reference": [
             "Lang, P. J., Bradley, M. M., & Cuthbert, B. N. (1997). International affective picture system (IAPS): Technical manual and affective ratings. NIMH Center for the Study of Emotion and Attention, 1(39-58), 3.",
