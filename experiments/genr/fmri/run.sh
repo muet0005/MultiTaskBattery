@@ -1,13 +1,14 @@
 #!/bin/bash
 
 # Define the absolute base path to the repository folder
-mdtbDir="/Users/rmuetzel/OneDrive - Erasmus MC/software/MDTB"
+mdtbDir="/opt/mdtb/task"
 
+uvDir="/opt/mdtb/uv/mdtb"
 #task
 task=fmri
 
 # 1. Activate the python virtual environment safely using quotes
-source "${mdtbDir}/.venv/bin/activate"
+source "${mdtbDir}/bin/activate"
 
 # 2. Append both the root directory and inner directory to PYTHONPATH
 # This prevents absolute/relative module import errors inside the tasks

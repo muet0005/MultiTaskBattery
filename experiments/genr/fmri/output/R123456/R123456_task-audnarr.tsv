@@ -1,5 +1,0 @@
-run_num	trial_num	trial_dur	iti_dur	display_trial_feedback	stim	start_time	end_time	real_start_time	start_ttl	start_ttl_time
-1	0	30	0	False	Story_1.wav	0	30	180.00022133346647	1	180.00022187503055
-1	0	30	0	False	Story_1.wav	0	30	5.000261083478108	1	5.000261625042185
-2	0	30	0	False	Story_2.wav	0	30	75.0001884168014	1	75.00018895836547
-1	0	30	0	False	Story_1.wav	0	30	5.000215916661546	1	5.000216416781768

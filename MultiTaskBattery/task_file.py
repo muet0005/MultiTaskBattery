@@ -78,7 +78,7 @@ def add_start_end_times(dataframe, offset, task_dur, run_time=None):
 def make_run_file(task_list,
                   tfiles,
                   offset = 0,
-                  instruction_dur = 5,
+                  instruction_dur = 8,
                   task_dur = 30,
                   run_time = None,
                   keep_in_middle=None,

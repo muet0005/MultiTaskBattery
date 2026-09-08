@@ -29,7 +29,10 @@ def main(subj_id):
     
     # Initialize Experiment, explicitly passing the timestamp down
     my_Exp = exp_block.Experiment(const, subj_id=subj_id, session_timestamp=session_timestamp)
-    
+
+    # Open GUI input interface to capture participant details
+    my_Exp.confirm_run_info_genr()
+
     # Consolidate standard configuration paths using pure Pathlib syntax
     output_base = Path(my_Exp.const.exp_dir) / 'output'
     my_Exp.const.task_dir = output_base / 'task_files'
@@ -49,8 +52,6 @@ def main(subj_id):
         T = tf.make_run_file(tasks, tfiles)
         T.to_csv(const.run_dir / f'run_{r:02d}.tsv', sep='\t', index=False)
         
-    # Open GUI input interface to capture participant details
-    my_Exp.confirm_run_info_genr()
     
     # Setup standard pause window infrastructure for scanner intervals
     pause_dialog = gui.Dlg(title="Pause")

@@ -317,7 +317,14 @@ class Task:
             run_num (int): Number of run - inserted as first column
         """
         self.trial_data.insert(0, 'run_num', [run_num]*len(self.trial_data))
-        trial_data_file = self.const.data_dir / subj_id / f"{subj_id}_task-{self.code}.tsv"
+        #trial_data_file = self.const.data_dir / subj_id / f"{subj_id}_task-{self.code}.tsv"
+        #ut.append_data_to_file(trial_data_file, self.trial_data)
+        if hasattr(self.const, 'run_dir'):
+            session_dir = self.const.run_dir.parent
+        else:
+            session_dir = self.const.data_dir / subj_id
+            
+        trial_data_file = session_dir / f"{subj_id}_task-{self.code}.tsv"
         ut.append_data_to_file(trial_data_file, self.trial_data)
 
     def screen_quit(self):

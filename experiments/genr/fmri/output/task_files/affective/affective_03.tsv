@@ -6,7 +6,7 @@ key_pleasant	key_unpleasant	trial_num	stim	trial_type	hand	trial_dur	iti_dur	dis
 4	3	4	unpleasant23.jpg	1	left	1.6	0.4	True	8.0	10.0
 4	3	5	pleasant16.jpg	2	left	1.6	0.4	True	10.0	12.0
 4	3	6	unpleasant18.jpg	1	left	1.6	0.4	True	12.0	14.0
-4	3	7	pleasant26.jpg	2	left	1.6	0.4	True	14.0	16.0
+4	3	7	pleasant21.jpg	2	left	1.6	0.4	True	14.0	16.0
 4	3	8	pleasant7.jpg	2	left	1.6	0.4	True	16.0	18.0
 4	3	9	pleasant15.jpg	2	left	1.6	0.4	True	18.0	20.0
 4	3	10	unpleasant10.jpg	1	left	1.6	0.4	True	20.0	22.0
