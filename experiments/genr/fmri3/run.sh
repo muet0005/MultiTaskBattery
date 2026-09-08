@@ -1,17 +1,18 @@
 #!/bin/bash
 
 # Define the absolute base path to the repository folder
-mdtbDir="/Users/rmuetzel/OneDrive - Erasmus MC/software/MDTB"
+mdtbDir="/opt/mdtb/task"
 
+uvDir="/opt/mdtb/uv/mdtb"
 #task
-task=fmri
+task=fmri3
 
 # 1. Activate the python virtual environment safely using quotes
-source "${mdtbDir}/.venv/bin/activate"
+source "${mdtbDir}/bin/activate"
 
 # 2. Append both the root directory and inner directory to PYTHONPATH
 # This prevents absolute/relative module import errors inside the tasks
 export PYTHONPATH="${PYTHONPATH}:${mdtbDir}:${mdtbDir}/MultiTaskBattery"
 
 # 3. Run the optimized experiment script (Fixed the typo from 'mdtnDir' to 'mdtbDir')
-python3 "${mdtbDir}/MultiTaskBattery/experiments/genr/${task}/run.py"
+python3 "${mdtbDir}/experiments/genr/${task}/run.py"

@@ -15,4 +15,4 @@ source "${mdtbDir}/bin/activate"
 export PYTHONPATH="${PYTHONPATH}:${mdtbDir}:${mdtbDir}/MultiTaskBattery"
 
 # 3. Run the optimized experiment script (Fixed the typo from 'mdtnDir' to 'mdtbDir')
-python3 "${mdtbDir}/MultiTaskBattery/experiments/genr/${task}/run.py"
+python3 "${mdtbDir}/experiments/genr/${task}/run.py"
