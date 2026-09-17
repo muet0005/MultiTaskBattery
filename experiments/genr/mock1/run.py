@@ -36,7 +36,7 @@ def main(subj_id):
     const.data_dir = output_base
     
     # This run_dir matches the new subfolder architecture inside experiment_block
-    const.run_dir = output_base / 'run_files'
+    const.run_dir = output_base / my_Exp.subj_id / session_timestamp / 'run_files'
     ut.dircheck(const.run_dir)
 
     # Open GUI input interface to capture participant details

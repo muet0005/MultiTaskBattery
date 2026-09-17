@@ -1,18 +1,16 @@
 #!/bin/bash
 
-# Define the absolute base path to the repository folder
-mdtbDir="/opt/mdtb/task"
+# 1. Source the central config file from the parent directory
+source ../config.sh
 
-uvDir="/opt/mdtb/uv/mdtb"
-#task
-task=fmri2
+# 2. Set task to the current folder name automatically (e.g., 'fmri')
+task=$(basename "$PWD")
 
-# 1. Activate the python virtual environment safely using quotes
-source "${mdtbDir}/bin/activate"
+# 3. Activate the python virtual environment
+source "${uvDir}/bin/activate"
 
-# 2. Append both the root directory and inner directory to PYTHONPATH
-# This prevents absolute/relative module import errors inside the tasks
+# 4. Append directories to PYTHONPATH
 export PYTHONPATH="${PYTHONPATH}:${mdtbDir}:${mdtbDir}/MultiTaskBattery"
 
-# 3. Run the optimized experiment script (Fixed the typo from 'mdtnDir' to 'mdtbDir')
-python3 "${mdtbDir}/experiments/genr/${task}/run.py"
+# 5. Run the experiment
+python3 "${expDir}/${task}/run.py"
